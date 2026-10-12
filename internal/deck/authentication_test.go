@@ -2,6 +2,7 @@ package deck
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -57,5 +58,32 @@ func TestTemporaryAuthenticationFailureDoesNotDisableAccount(t *testing.T) {
 	state := s.RefreshAutomatic()
 	if state.Accounts[0].AuthError != "" || state.Accounts[0].UsageError == "" {
 		t.Fatal("临时故障被误判为认证失效")
+	}
+}
+
+func TestUnauthorizedAfterRefreshRequiresLogin(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	fresh := testToken(t, a.UserID, a.AccountID, time.Now().Add(time.Hour))
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			fmt.Fprintf(w, `{"id_token":%q,"access_token":%q,"refresh_token":"rotated","expires_in":3600}`, fresh, fresh)
+			return
+		}
+		calls.Add(1)
+		w.WriteHeader(401)
+	}))
+	defer server.Close()
+	s.oauth = OAuth{Client: server.Client(), Issuer: server.URL}
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	s.RefreshAutomatic()
+	if calls.Load() != 2 || s.GetState().Accounts[0].AuthError == "" {
+		t.Fatal("刷新后持续 401 未要求重新登录")
+	}
+	s.RefreshAutomatic()
+	if calls.Load() != 2 {
+		t.Fatal("失效账号自动重复请求")
 	}
 }

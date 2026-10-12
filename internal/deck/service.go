@@ -13,6 +13,7 @@ import (
 )
 
 type Service struct {
+	generation          uint64
 	mu                  sync.Mutex
 	refreshMu           sync.Mutex
 	autoMu              sync.Mutex
@@ -232,6 +233,8 @@ func (s *Service) Restore(id string) error {
 	s.stopBackup()
 	s.backupIO.Lock()
 	defer s.backupIO.Unlock()
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.restore == nil || id != s.restoreID {
@@ -260,6 +263,7 @@ func (s *Service) Restore(id string) error {
 	}); err != nil {
 		return err
 	}
+	s.generation++
 	s.restore = nil
 	s.restoreID = ""
 	s.usageErrors = map[string]string{}
@@ -443,6 +447,7 @@ func (s *Service) prepareAccountLocked(id string, force bool) (Account, error) {
 	}
 	if current && !cliAccount.Tokens.LastRefresh.Before(a.Tokens.LastRefresh) && (cliAccount.Tokens.IDToken != a.Tokens.IDToken || cliAccount.Tokens.AccessToken != a.Tokens.AccessToken || cliAccount.Tokens.RefreshToken != a.Tokens.RefreshToken) {
 		a = cliAccount
+		a.AuthError = ""
 		if err = s.saveAccount(a); err != nil {
 			return a, err
 		}
@@ -477,7 +482,7 @@ func (s *Service) prepareAccountLocked(id string, force bool) (Account, error) {
 		return a, err
 	}
 	if !identityMatches(a, i) {
-		return a, fmt.Errorf("刷新后账号身份改变，请重新登录")
+		return a, s.authenticationFailed(id, "刷新后账号身份改变，请重新登录")
 	}
 	a.Tokens = t
 	a.Email = i.Email
@@ -508,7 +513,11 @@ func (s *Service) authenticated(id string, request func(Account) error) error {
 		if err != nil {
 			return err
 		}
-		return request(a)
+		err = request(a)
+		if errors.As(err, &httpErr) && httpErr.Status == http.StatusUnauthorized {
+			return s.authenticationFailed(id, "刷新后认证仍未通过，请重新登录")
+		}
+		return err
 	}
 	return err
 }
@@ -516,6 +525,7 @@ func (s *Service) authenticated(id string, request func(Account) error) error {
 func (s *Service) refreshUsage(id string) error { return s.refreshUsageContext(s.ctx, id) }
 
 func (s *Service) refreshUsageContext(ctx context.Context, id string) error {
+	generation := s.generation
 	s.usageTries[id] = time.Now()
 	var usage *Usage
 	err := s.authenticated(id, func(a Account) error {
@@ -523,8 +533,18 @@ func (s *Service) refreshUsageContext(ctx context.Context, id string) error {
 		var err error
 		usage, err = s.backend.Usage(ctx, a)
 		s.mu.Lock()
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		current, e := findAccount(s.store.Snapshot(), id)
+		if e != nil || s.generation != generation || current.Tokens.AccessToken != a.Tokens.AccessToken {
+			return ErrAccountChanged
+		}
 		return err
 	})
+	if errors.Is(err, ErrAccountChanged) {
+		return err
+	}
 	if ctx.Err() != nil {
 		delete(s.usageTries, id)
 		return ctx.Err()
@@ -550,14 +570,22 @@ func (s *Service) refreshUsageContext(ctx context.Context, id string) error {
 }
 
 func (s *Service) refreshCredits(id string) error {
+	generation := s.generation
 	var credits *Credits
 	err := s.authenticated(id, func(a Account) error {
 		s.mu.Unlock()
 		var err error
 		credits, err = s.backend.Credits(s.ctx, a)
 		s.mu.Lock()
+		current, e := findAccount(s.store.Snapshot(), id)
+		if e != nil || s.generation != generation || current.Tokens.AccessToken != a.Tokens.AccessToken {
+			return ErrAccountChanged
+		}
 		return err
 	})
+	if errors.Is(err, ErrAccountChanged) {
+		return err
+	}
 	if err == nil {
 		a, e := findAccount(s.store.Snapshot(), id)
 		if e != nil {
@@ -675,6 +703,10 @@ func (s *Service) Consume(id, requestID string) (ConsumeResult, error) {
 	if err != nil {
 		return ConsumeResult{}, err
 	}
+	if a.PendingReset == nil || a.PendingReset.ID != requestID {
+		return ConsumeResult{}, ErrAccountChanged
+	}
+	generation := s.generation
 	a.PendingReset.Started = true
 	if err = s.saveAccount(a); err != nil {
 		return ConsumeResult{}, err
@@ -693,6 +725,9 @@ func (s *Service) Consume(id, requestID string) (ConsumeResult, error) {
 	a, err = findAccount(s.store.Snapshot(), id)
 	if err != nil {
 		return result, err
+	}
+	if s.generation != generation || a.PendingReset == nil || a.PendingReset.ID != requestID {
+		return result, fmt.Errorf("服务端已返回 %s，本地数据已改变，未写入消费结果", result.Code)
 	}
 	a.PendingReset.Result = &result
 	if err = s.saveAccount(a); err != nil {
@@ -715,4 +750,19 @@ func (s *Service) publish() {
 	if s.onChange != nil {
 		s.onChange(s.state())
 	}
+}
+
+var ErrAccountChanged = errors.New("操作期间账号数据已改变，请重试")
+
+func (s *Service) authenticationFailed(id, message string) error {
+	a, err := findAccount(s.store.Snapshot(), id)
+	if err != nil {
+		return err
+	}
+	a.AuthError = message
+	err = s.saveAccount(a)
+	if err == nil {
+		s.autoBackup()
+	}
+	return errors.Join(&AuthenticationError{Message: message}, err)
 }
