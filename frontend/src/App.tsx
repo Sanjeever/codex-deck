@@ -199,6 +199,7 @@ export default function App() {
         <td className="account-cell"><div className="flex items-center gap-2"><span className="font-medium break-all">{accountName(account)}</span>{account.current && <span className="current-tag">当前</span>}</div>
           {account.alias && account.email && <p className="mt-1 text-xs text-muted break-all">{account.email}</p>}
           <p className="mt-1 text-xs text-muted" title={account.account_id}>工作区 {account.account_id.slice(0, 12)}</p>
+          {account.auth_error && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => void login(account.id)}>重新登录</Button>}
           {account.usage_error && <p className="row-error" title={account.usage_error}>{account.usage_error}</p>}
           {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{account.usage_error ? '缓存' : '更新'} {new Date(account.usage.queried_at).toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', hour12: false})}</p>}
         </td>

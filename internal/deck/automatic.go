@@ -31,7 +31,7 @@ func (s *Service) RefreshAutomatic() State {
 	for _, account := range accounts {
 		s.mu.Lock()
 		current, err := findAccount(s.store.Snapshot(), account.ID)
-		if err == nil && !time.Now().Before(nextUsageRefresh(current, s.usageTries[current.ID])) {
+		if err == nil && current.AuthError == "" && !time.Now().Before(nextUsageRefresh(current, s.usageTries[current.ID])) {
 			s.refreshUsage(current.ID)
 		}
 		s.mu.Unlock()

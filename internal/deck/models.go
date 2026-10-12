@@ -59,6 +59,7 @@ type Account struct {
 	Email        string        `json:"email"`
 	Alias        string        `json:"alias"`
 	Plan         string        `json:"plan"`
+	AuthError    string        `json:"auth_error,omitempty"`
 	Tokens       Tokens        `json:"tokens"`
 	Usage        *Usage        `json:"usage"`
 	Credits      *Credits      `json:"credits"`
@@ -86,6 +87,7 @@ type AccountView struct {
 	Email        string        `json:"email"`
 	Alias        string        `json:"alias"`
 	Plan         string        `json:"plan"`
+	AuthError    string        `json:"auth_error"`
 	Current      bool          `json:"current"`
 	Usage        *Usage        `json:"usage"`
 	Credits      *Credits      `json:"credits"`

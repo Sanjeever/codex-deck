@@ -107,6 +107,9 @@ func (s *Service) state() State {
 	d := s.store.Snapshot()
 	nextRefresh := time.Now().Add(autoRefreshInterval)
 	for _, account := range d.Accounts {
+		if account.AuthError != "" {
+			continue
+		}
 		next := nextUsageRefresh(account, s.usageTries[account.ID])
 		if next.IsZero() {
 			next = time.Now()
@@ -134,7 +137,7 @@ func (s *Service) state() State {
 		if a.Usage != nil && a.Usage.Plan != "" {
 			plan = a.Usage.Plan
 		}
-		state.Accounts = append(state.Accounts, AccountView{ID: a.ID, AccountID: a.AccountID, Email: a.Email, Alias: a.Alias, Plan: plan, Current: mode == "file" && identityMatches(a, current), Usage: a.Usage, Credits: a.Credits, UsageError: s.usageErrors[a.ID], CreditsError: s.creditErrors[a.ID], PendingReset: a.PendingReset})
+		state.Accounts = append(state.Accounts, AccountView{ID: a.ID, AccountID: a.AccountID, Email: a.Email, Alias: a.Alias, Plan: plan, AuthError: a.AuthError, Current: mode == "file" && identityMatches(a, current), Usage: a.Usage, Credits: a.Credits, UsageError: s.usageErrors[a.ID], CreditsError: s.creditErrors[a.ID], PendingReset: a.PendingReset})
 	}
 	return state
 }
@@ -341,6 +344,7 @@ func (s *Service) acceptLogin(target string, t Tokens, i Identity) error {
 		}
 		for n, a := range d.Accounts {
 			if identityMatches(a, i) {
+				d.Accounts[n].AuthError = ""
 				d.Accounts[n].Tokens = t
 				d.Accounts[n].Email = i.Email
 				d.Accounts[n].Plan = i.Plan
@@ -370,11 +374,22 @@ func (s *Service) prepareAccount(id string, force bool) (Account, error) {
 		}
 		s.autoBackup()
 	}
+	if a.AuthError != "" {
+		return a, &AuthenticationError{Message: a.AuthError}
+	}
 	if !force && time.Until(a.Tokens.ExpiresAt) > time.Minute {
 		return a, nil
 	}
 	t, i, err := s.oauth.Refresh(s.ctx, a.Tokens)
 	if err != nil {
+		var authErr *AuthenticationError
+		if errors.As(err, &authErr) {
+			a.AuthError = authErr.Error()
+			if saveErr := s.saveAccount(a); saveErr != nil {
+				return a, errors.Join(err, saveErr)
+			}
+			s.autoBackup()
+		}
 		return a, err
 	}
 	if !identityMatches(a, i) {

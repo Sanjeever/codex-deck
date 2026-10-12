@@ -130,11 +130,11 @@ func (o OAuth) Refresh(ctx context.Context, old Tokens) (Tokens, Identity, error
 		if errors.As(err, &httpErr) {
 			switch httpErr.Code {
 			case "refresh_token_expired":
-				return t, i, fmt.Errorf("刷新令牌已过期，请重新登录")
+				return t, i, &AuthenticationError{Message: "刷新令牌已过期，请重新登录"}
 			case "refresh_token_reused":
-				return t, i, fmt.Errorf("刷新令牌已被使用，请重新登录")
+				return t, i, &AuthenticationError{Message: "刷新令牌已被使用，请重新登录"}
 			case "refresh_token_invalidated", "invalid_grant":
-				return t, i, fmt.Errorf("刷新令牌已失效，请重新登录")
+				return t, i, &AuthenticationError{Message: "刷新令牌已失效，请重新登录"}
 			}
 		}
 	}
@@ -191,3 +191,8 @@ func (o OAuth) exchange(ctx context.Context, body []byte, contentType string, ol
 	t.OAuthResponse = raw
 	return t, i, nil
 }
+
+// AuthenticationError 表示需要重新登录，网络故障不属于此类。
+type AuthenticationError struct{ Message string }
+
+func (e *AuthenticationError) Error() string { return e.Message }
