@@ -79,7 +79,7 @@ func TestStartupImportsCLIWhenEmpty(t *testing.T) {
 			if err := second.Delete(imported.ID); err != nil {
 				t.Fatal(err)
 			}
-			if len(second.GetState().Accounts) != 0 || len(second.RefreshAll().Accounts) != 0 {
+			if len(second.GetState().Accounts) != 0 {
 				t.Fatal("删除后立即重新导入")
 			}
 			after, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
@@ -97,7 +97,7 @@ func TestStartupImportsCLIWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestStartupKeepsExistingAccounts(t *testing.T) {
+func TestStartupImportsCLIAlongsideExistingAccounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deck.json")
 	store, err := OpenStore(path)
 	if err != nil {
@@ -108,10 +108,6 @@ func TestStartupKeepsExistingAccounts(t *testing.T) {
 	if err := store.Update(func(d *Data) error { d.Accounts = []Account{a}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cli := CLI{Home: t.TempDir()}
 	other := a.Tokens
 	other.AccountID = "other-workspace"
@@ -120,20 +116,24 @@ func TestStartupKeepsExistingAccounts(t *testing.T) {
 	if err := cli.Write(other); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	s, err := NewService(context.Background(), path, cli.Home)
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := s.GetState()
-	if len(state.Accounts) != 1 || state.Accounts[0].ID != a.ID || state.Accounts[0].Alias != a.Alias || state.Accounts[0].Current {
-		t.Fatal("非空列表仍导入或覆盖账号")
+	if len(state.Accounts) != 2 || state.Accounts[0].ID != a.ID || state.Accounts[0].Alias != a.Alias || state.Accounts[0].Current || !state.Accounts[1].Current || state.Accounts[1].AccountID != other.AccountID {
+		t.Fatal("启动未同步新账号或覆盖已有账号")
 	}
-	after, err := os.ReadFile(path)
+	after, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
-		t.Fatal("启动改写已有账号配置")
+		t.Fatal("同步改写 CLI 认证")
 	}
 }
 
@@ -227,6 +227,217 @@ func TestStartupImportBacksUpAccount(t *testing.T) {
 	}
 	if len(remote.Accounts) != 1 || remote.Accounts[0].Tokens.RefreshToken != a.Tokens.RefreshToken || s.GetState().Backup.At == nil || s.GetState().Backup.Error != "" {
 		t.Fatal("自动导入未触发备份")
+	}
+}
+
+func TestRefreshSynchronizesManualCLILoginsAndLogout(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	a.Alias = "原账号"
+	addTestAccount(t, s, a)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Write([]byte(`{"plan_type":"plus"}`))
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	b := testAccount(t)
+	b.UserID = "other-user"
+	b.AccountID = "other-workspace"
+	b.Tokens.IDToken = testToken(t, b.UserID, b.AccountID, time.Now().Add(time.Hour))
+	b.Tokens.AccessToken = b.Tokens.IDToken
+	b.Tokens.AccountID = b.AccountID
+	if err := s.cli.Write(b.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := s.RefreshAll()
+	if len(state.Accounts) != 2 || state.Accounts[0].Current || !state.Accounts[1].Current || state.Accounts[0].Alias != a.Alias || state.Accounts[1].AccountID != b.AccountID || requests.Load() != 2 {
+		t.Fatal("刷新未发现本地新账号或未查询全部账号")
+	}
+	newID := state.Accounts[1].ID
+	after, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("同步改写 CLI 凭据")
+	}
+	if err := os.Remove(filepath.Join(s.cli.Home, "auth.json")); err != nil {
+		t.Fatal(err)
+	}
+	state = s.RefreshAll()
+	if len(state.Accounts) != 2 || state.Accounts[0].Current || state.Accounts[1].Current || state.CLIError != "" {
+		t.Fatal("logout 后当前标记或账号保留错误")
+	}
+	if _, err := os.Stat(filepath.Join(s.cli.Home, "auth.json")); !os.IsNotExist(err) {
+		t.Fatal("logout 后重新写入 CLI 认证")
+	}
+	if err := s.cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RefreshAccount(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	state = s.GetState()
+	if len(state.Accounts) != 2 || !state.Accounts[0].Current || state.Accounts[1].Current || state.Accounts[1].ID != newID {
+		t.Fatal("行内刷新未同步当前账号或生成重复记录")
+	}
+	reloaded, err := OpenStore(s.store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Snapshot().Accounts) != 2 {
+		t.Fatal("发现的新账号未持久保存")
+	}
+}
+
+func TestRefreshUpdatesCLICredentialsPreservingAccountData(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	a.Alias = "保留别名"
+	a.Usage = &Usage{Plan: "plus", FiveHour: &Window{RemainingPercent: 42}, QueriedAt: time.Now()}
+	a.Credits = &Credits{AvailableCount: 1, QueriedAt: time.Now()}
+	a.PendingReset = &ResetRequest{ID: "pending-local-request", Started: true}
+	a.Tokens.OAuthResponse = json.RawMessage(`{"scope":"openid"}`)
+	addTestAccount(t, s, a)
+	updated := a.Tokens
+	updated.RefreshToken = "manual-login-refresh"
+	updated.LastRefresh = a.Tokens.LastRefresh.Add(time.Second)
+	if err := s.cli.Write(updated); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	state := s.RefreshAll()
+	stored := s.store.Snapshot().Accounts[0]
+	if len(state.Accounts) != 1 || stored.ID != a.ID || stored.Alias != a.Alias || stored.Tokens.RefreshToken != updated.RefreshToken || !stored.Tokens.LastRefresh.Equal(updated.LastRefresh) || string(stored.Tokens.OAuthResponse) != string(a.Tokens.OAuthResponse) || stored.Usage.FiveHour.RemainingPercent != 42 || stored.Credits.AvailableCount != 1 || stored.PendingReset.ID != a.PendingReset.ID || state.Accounts[0].UsageError == "" {
+		t.Fatal("凭据更新丢失账号数据或刷新失败覆盖缓存")
+	}
+}
+
+func TestRefreshSyncFailureAndRecovery(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	invalid := cliAuth{AuthMode: "chatgpt", Tokens: &cliTokens{IDToken: a.Tokens.IDToken, AccessToken: a.Tokens.AccessToken, AccountID: a.AccountID}}
+	b, err := json.Marshal(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.cli.Home, "auth.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := s.RefreshAll()
+	if state.CLIError == "" || len(state.Accounts) != 1 || s.store.Snapshot().Accounts[0].Tokens.RefreshToken != a.Tokens.RefreshToken {
+		t.Fatal("同步失败未报错或覆盖已有认证")
+	}
+	if err := s.cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"plan_type":"plus"}`)) }))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	state = s.RefreshAll()
+	if state.CLIError != "" || len(state.Accounts) != 1 || !state.Accounts[0].Current {
+		t.Fatal("修复凭据后同步错误未清除")
+	}
+}
+
+func TestCLISyncBacksUpOnlyChangedCredentials(t *testing.T) {
+	settings, root, closeServer := testWebDAV(t)
+	defer closeServer()
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	if err := s.cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"plan_type":"plus"}`)) }))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupAt := *s.GetState().Backup.At
+	s.RefreshAll()
+	after, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) || !s.GetState().Backup.At.Equal(backupAt) {
+		t.Fatal("相同凭据反复触发备份")
+	}
+	updated := a.Tokens
+	updated.RefreshToken = "cli-new-refresh"
+	updated.LastRefresh = a.Tokens.LastRefresh.Add(time.Second)
+	if err := s.cli.Write(updated); err != nil {
+		t.Fatal(err)
+	}
+	s.RefreshAll()
+	remote, err := downloadBackup(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remote.Accounts[0].Tokens.RefreshToken != updated.RefreshToken {
+		t.Fatal("CLI 更新凭据后未备份")
+	}
+	backupAt = *s.GetState().Backup.At
+	s.RefreshAll()
+	if !s.GetState().Backup.At.Equal(backupAt) {
+		t.Fatal("同步完成后再次触发相同备份")
+	}
+}
+
+func TestCLISyncKeepsNewerDeckLogin(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	if err := s.cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	a.Tokens.RefreshToken = "newer-deck-login"
+	a.Tokens.LastRefresh = a.Tokens.LastRefresh.Add(time.Second)
+	addTestAccount(t, s, a)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"plan_type":"plus"}`)) }))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	s.RefreshAll()
+	if s.store.Snapshot().Accounts[0].Tokens.RefreshToken != "newer-deck-login" {
+		t.Fatal("CLI 旧凭据覆盖 Deck 新登录")
+	}
+}
+
+func TestCLISyncUnsupportedStoreAllowsConfirmedSwitch(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	if err := os.WriteFile(filepath.Join(s.cli.Home, "config.toml"), []byte("cli_auth_credentials_store = \"keyring\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewService(context.Background(), s.store.path, s.cli.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := restarted.GetState(); state.CLIError == "" || state.CLIStore != "keyring" {
+		t.Fatal("不支持的存储方式未显示同步错误")
+	}
+	if err := restarted.Switch(a.ID, false); err == nil {
+		t.Fatal("未确认便修改凭据存储")
+	}
+	if err := restarted.Switch(a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if state := restarted.GetState(); state.CLIError != "" || state.CLIStore != "file" || !state.Accounts[0].Current {
+		t.Fatal("确认切换后同步错误未清除")
 	}
 }
 

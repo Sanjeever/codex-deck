@@ -148,7 +148,7 @@ export default function App() {
         actions = <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在删除', () => backend().Delete(dialog.account.id), () => success('账号已删除'))}>删除</Button>; break;
       case 'switch':
         title = '切换账号'; body = <p>CLI 当前使用 {state?.cli_store || '未知'} 存储。改为文件存储并切换至 {accountName(dialog.account)}？</p>;
-        actions = <Button isDisabled={!!busy || !!state?.cli_error} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), () => success('已切换，重新启动 Codex CLI 后生效'))}>确认切换</Button>; break;
+        actions = <Button isDisabled={!!busy} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), () => success('已切换，重新启动 Codex CLI 后生效'))}>确认切换</Button>; break;
       case 'restore':
         title = '恢复备份'; body = <div className="space-y-3"><p>整体替换本地账号、认证和设置？</p><p className="text-sm text-muted">备份包含 {dialog.preview.accounts} 个账号。CLI 当前账号保持不变。</p>{dialog.preview.webdav_url !== state?.settings.webdav_url && <p className="text-sm text-muted break-all">恢复后的 WebDAV 地址为 {dialog.preview.webdav_url || '未配置'}。</p>}</div>;
         actions = <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在恢复', () => backend().Restore(dialog.preview.id), () => success('备份已恢复'))}>确认替换</Button>; break;

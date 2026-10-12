@@ -37,19 +37,36 @@ func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	s := &Service{store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}}
-	if len(store.Snapshot().Accounts) == 0 {
-		a, err := s.cli.ReadAccount()
-		if err == nil && a != nil {
-			err = s.acceptLogin("", a.Tokens, Identity{UserID: a.UserID, AccountID: a.AccountID, Email: a.Email, Plan: a.Plan})
-			if err == nil {
-				s.autoBackup()
+	s.syncCLIAccount()
+	return s, nil
+}
+
+func (s *Service) syncCLIAccount() {
+	s.importError = ""
+	local, err := s.cli.ReadAccount()
+	if err == nil && local != nil {
+		i := Identity{UserID: local.UserID, AccountID: local.AccountID, Email: local.Email, Plan: local.Plan}
+		for _, existing := range s.store.Snapshot().Accounts {
+			if !identityMatches(existing, i) {
+				continue
 			}
+			if local.Tokens.LastRefresh.Before(existing.Tokens.LastRefresh) {
+				return
+			}
+			if local.Tokens.IDToken == existing.Tokens.IDToken && local.Tokens.AccessToken == existing.Tokens.AccessToken && local.Tokens.RefreshToken == existing.Tokens.RefreshToken && local.Tokens.LastRefresh.Equal(existing.Tokens.LastRefresh) && local.Email == existing.Email && local.Plan == existing.Plan {
+				return
+			}
+			local.Tokens.OAuthResponse = existing.Tokens.OAuthResponse
+			break
 		}
-		if err != nil {
-			s.importError = fmt.Sprintf("自动导入 CLI 账号失败: %v", err)
+		err = s.acceptLogin("", local.Tokens, i)
+		if err == nil {
+			s.autoBackup()
 		}
 	}
-	return s, nil
+	if err != nil {
+		s.importError = fmt.Sprintf("同步 CLI 账号失败: %v", err)
+	}
 }
 
 func findAccount(d Data, id string) (Account, error) {
@@ -75,10 +92,7 @@ func (s *Service) saveAccount(a Account) error {
 
 func (s *Service) state() State {
 	d := s.store.Snapshot()
-	state := State{Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup}
-	if len(d.Accounts) == 0 {
-		state.CLIError = s.importError
-	}
+	state := State{Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError}
 	mode, err := s.cli.StoreMode()
 	state.CLIStore = mode
 	var current Identity
@@ -416,6 +430,7 @@ func (s *Service) refreshCredits(id string) error {
 func (s *Service) RefreshAll() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.syncCLIAccount()
 	for _, a := range s.store.Snapshot().Accounts {
 		s.refreshUsage(a.ID)
 	}
@@ -425,6 +440,7 @@ func (s *Service) RefreshAll() State {
 func (s *Service) RefreshAccount(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.syncCLIAccount()
 	return s.refreshUsage(id)
 }
 func (s *Service) RefreshCredits(id string) error {
@@ -461,6 +477,7 @@ func (s *Service) Switch(id string, enableFile bool) error {
 	if err = s.store.Update(func(d *Data) error { d.LastSwitchedID = id; return nil }); err != nil {
 		return fmt.Errorf("CLI 已切换，本地记录保存失败: %w", err)
 	}
+	s.importError = ""
 	s.autoBackup()
 	return nil
 }
