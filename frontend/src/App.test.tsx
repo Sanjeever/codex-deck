@@ -10,7 +10,7 @@ it('自动请求期间仍能打开设置，返回结果不关闭弹窗或覆盖�
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
-  const state: State = {accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date().toISOString()};
+  const state: State = {preferences: {privacy: false, sort: ''}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date().toISOString()};
   let complete!: (value: State) => void;
   const automatic = vi.fn(() => new Promise<State>(resolve => {complete = resolve}));
   const api = {CancelAutomatic: vi.fn(async () => {}), GetState: vi.fn(async () => state), RefreshAutomatic: automatic};
@@ -29,5 +29,19 @@ it('自动请求期间仍能打开设置，返回结果不关闭弹窗或覆盖�
     expect((address as HTMLInputElement).value).toBe('https://example.test/backup/');
     await act(async () => {await vi.advanceTimersByTimeAsync(600_000)});
     expect(automatic).toHaveBeenCalledTimes(1);
+  } finally {vi.unstubAllGlobals()}
+});
+
+it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区', async () => {
+  const account = {id: 'record', account_id: 'workspace-sensitive', email: 'private@example.test', alias: '', plan: 'plus', current: true, auth_error: '', usage: null, credits: null, usage_error: '查询 private@example.test workspace-sensitive 失败', credits_error: '', pending_reset: null};
+  const state: State = {preferences: {privacy: true, sort: ''}, accounts: [account], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date(Date.now() + 300_000).toISOString()};
+  vi.stubGlobal('go', {main: {App: {CancelAutomatic: vi.fn(async () => {}), GetState: vi.fn(async () => state)}}});
+  try {
+    const view = render(<App />);
+    await act(async () => {await Promise.resolve()});
+    expect(view.container.innerHTML).not.toContain(account.email);
+    expect(view.container.innerHTML).not.toContain(account.account_id);
+    expect(screen.getByRole('button', {name: '隐私'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', {name: '••••@•••• 操作'})).toBeTruthy();
   } finally {vi.unstubAllGlobals()}
 });

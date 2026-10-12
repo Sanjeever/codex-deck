@@ -137,7 +137,7 @@ func (s *Service) state() State {
 			nextRefresh = next
 		}
 	}
-	state := State{Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
+	state := State{Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
 	if s.watchError != "" {
 		state.CLIError = strings.TrimSpace(state.CLIError + " " + s.watchError)
 	}

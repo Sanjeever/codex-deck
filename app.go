@@ -209,3 +209,11 @@ func (a *App) OverwriteBackup() error {
 	}
 	return s.OverwriteBackup()
 }
+
+func (a *App) SavePreferences(p deck.Preferences) error {
+	s, err := a.backend()
+	if err != nil {
+		return err
+	}
+	return s.SavePreferences(p)
+}

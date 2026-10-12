@@ -55,6 +55,9 @@ func parseData(b []byte) (Data, error) {
 	if err := validateSettings(d.Settings); err != nil {
 		return d, err
 	}
+	if err := validatePreferences(d.Preferences); err != nil {
+		return d, err
+	}
 	ids := map[string]bool{}
 	identities := map[Identity]bool{}
 	for _, a := range d.Accounts {
