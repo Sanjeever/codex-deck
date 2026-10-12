@@ -262,6 +262,9 @@ func (s *Service) WaitLogin(id string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if l.canceled.Load() || s.ctx.Err() != nil {
+		return fmt.Errorf("登录已取消")
+	}
 	if err = s.acceptLogin(target, t, i); err != nil {
 		return err
 	}

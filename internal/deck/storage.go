@@ -59,7 +59,8 @@ func parseData(b []byte) (Data, error) {
 	identities := map[Identity]bool{}
 	for _, a := range d.Accounts {
 		i, err := identityFromToken(a.Tokens.IDToken)
-		if err != nil || a.ID == "" || !identityMatches(a, i) || a.Tokens.AccountID != a.AccountID || a.Tokens.AccessToken == "" || a.Tokens.RefreshToken == "" {
+		accessIdentity, accessErr := identityFromToken(a.Tokens.AccessToken)
+		if err != nil || accessErr != nil || a.ID == "" || !identityMatches(a, i) || !identityMatches(a, accessIdentity) || a.Tokens.AccountID != a.AccountID || a.Tokens.ExpiresAt.IsZero() || a.Tokens.RefreshToken == "" {
 			return d, fmt.Errorf("账号记录或认证无效")
 		}
 		key := Identity{UserID: a.UserID, AccountID: a.AccountID}

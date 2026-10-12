@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +36,7 @@ type Login struct {
 	address  string
 	waitMu   sync.Mutex
 	waited   bool
+	canceled atomic.Bool
 }
 type loginResult struct {
 	code string
@@ -88,7 +90,7 @@ func (o OAuth) startAt(ctx context.Context, address, redirect string) (*Login, e
 	return l, nil
 }
 
-func (l *Login) Cancel() { l.cancel() }
+func (l *Login) Cancel() { l.canceled.Store(true); l.cancel(); _ = l.server.Close() }
 
 func (o OAuth) Wait(l *Login) (Tokens, Identity, error) {
 	l.waitMu.Lock()

@@ -3,6 +3,7 @@ package deck
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -117,6 +118,18 @@ func TestOAuthCancelAndFailure(t *testing.T) {
 	l.Cancel()
 	if _, _, err = o.Wait(l); err == nil {
 		t.Fatal("取消应返回错误")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		conn, dialErr := net.DialTimeout("tcp", l.address, 20*time.Millisecond)
+		if dialErr != nil {
+			break
+		}
+		conn.Close()
+		if time.Now().After(deadline) {
+			t.Fatal("取消未关闭回调监听")
+		}
+		time.Sleep(time.Millisecond)
 	}
 	for _, code := range []string{"refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated", "invalid_grant"} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -159,6 +159,13 @@ func (c CLI) ImportCurrent(a Account) (Account, bool, error) {
 	if err != nil {
 		return a, false, err
 	}
+	accessIdentity, err := identityFromToken(t.AccessToken)
+	if err != nil {
+		return a, false, err
+	}
+	if !identityMatches(a, accessIdentity) {
+		return a, false, fmt.Errorf("CLI 访问令牌身份不匹配")
+	}
 	exp, err := claims.GetExpirationTime()
 	if err != nil {
 		return a, false, err

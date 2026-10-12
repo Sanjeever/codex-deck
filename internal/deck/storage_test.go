@@ -1,10 +1,12 @@
 package deck
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestStoreSerialSaveAndReload(t *testing.T) {
@@ -77,5 +79,25 @@ func TestFailedSaveKeepsPreviousData(t *testing.T) {
 	}
 	if s.Snapshot().LastSwitchedID != "" {
 		t.Fatal("失败保存影响内存")
+	}
+}
+
+func TestRestoreRejectsInvalidAccessIdentity(t *testing.T) {
+	d := Data{Version: Version, Accounts: []Account{testAccount(t)}}
+	d.Accounts[0].Tokens.AccessToken = "invalid"
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = parseData(b); err == nil {
+		t.Fatal("恢复接受无效访问令牌")
+	}
+	d.Accounts[0].Tokens.AccessToken = testToken(t, "other-user", "workspace-1", time.Now().Add(time.Hour))
+	b, err = json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = parseData(b); err == nil {
+		t.Fatal("恢复接受不同身份的访问令牌")
 	}
 }
