@@ -343,3 +343,91 @@ func TestConsumePersistentIdempotencyAndRefresh(t *testing.T) {
 		t.Fatal("消费后未查询或伪造额度")
 	}
 }
+
+func TestUnauthorizedRefreshAndChangedIdentity(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			s := testService(t)
+			a := testAccount(t)
+			addTestAccount(t, s, a)
+			user := a.UserID
+			if changed {
+				user = "other-user"
+			}
+			fresh := testToken(t, user, a.AccountID, time.Now().Add(2*time.Hour))
+			var requests, refreshes atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/oauth/token":
+					refreshes.Add(1)
+					json.NewEncoder(w).Encode(map[string]interface{}{"id_token": fresh, "access_token": fresh, "refresh_token": "refreshed", "expires_in": 3600})
+				case "/wham/usage":
+					if requests.Add(1) == 1 {
+						w.WriteHeader(401)
+						return
+					}
+					if r.Header.Get("Authorization") != "Bearer "+fresh {
+						t.Error("未使用新访问令牌")
+					}
+					w.Write([]byte(`{"plan_type":"plus"}`))
+				default:
+					t.Error("错误请求路径")
+				}
+			}))
+			defer server.Close()
+			s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+			s.oauth = OAuth{Client: server.Client(), Issuer: server.URL}
+			err := s.RefreshAccount(a.ID)
+			if (err != nil) != changed {
+				t.Fatalf("身份变化处理错误: %v", err)
+			}
+			if refreshes.Load() != 1 {
+				t.Fatal("令牌刷新未限制为一次")
+			}
+			wantRequests := int32(2)
+			wantRefresh := "refreshed"
+			if changed {
+				wantRequests = 1
+				wantRefresh = a.Tokens.RefreshToken
+			}
+			if requests.Load() != wantRequests || s.store.Snapshot().Accounts[0].Tokens.RefreshToken != wantRefresh {
+				t.Fatal("刷新覆盖不同账号认证或错误重试")
+			}
+		})
+	}
+}
+
+func TestSameEmailDifferentWorkspacesRemainDistinct(t *testing.T) {
+	s := testService(t)
+	for _, workspace := range []string{"workspace-1", "workspace-2"} {
+		a := testAccount(t)
+		a.AccountID = workspace
+		a.Tokens.AccountID = workspace
+		a.Tokens.IDToken = testToken(t, a.UserID, workspace, time.Now().Add(time.Hour))
+		a.Tokens.AccessToken = a.Tokens.IDToken
+		i, err := identityFromToken(a.Tokens.IDToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = s.acceptLogin("", a.Tokens, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	accounts := s.store.Snapshot().Accounts
+	if len(accounts) != 2 || accounts[0].ID == accounts[1].ID {
+		t.Fatal("相同邮箱的不同工作区被合并")
+	}
+	if err := s.cli.Write(accounts[1].Tokens); err != nil {
+		t.Fatal(err)
+	}
+	state := s.GetState()
+	if state.Accounts[0].Current || !state.Accounts[1].Current {
+		t.Fatal("当前账号未核对工作区")
+	}
+	if err := s.Delete(accounts[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if s.GetState().Accounts[0].Current {
+		t.Fatal("删除当前账号后错误标记其他账号")
+	}
+}
