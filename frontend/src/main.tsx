@@ -1,3 +1,7 @@
 import {createRoot} from 'react-dom/client';
 import './style.css';
-createRoot(document.getElementById('root')!).render(<main className="p-8"><h1 className="text-xl font-semibold">Codex Deck</h1></main>);
+import App from './App';
+const theme = window.matchMedia('(prefers-color-scheme: dark)');
+const syncTheme = () => {document.documentElement.classList.toggle('dark', theme.matches);document.documentElement.dataset.theme = theme.matches ? 'dark' : 'light'};
+syncTheme(); theme.addEventListener('change', syncTheme);
+createRoot(document.getElementById('root')!).render(<App />);

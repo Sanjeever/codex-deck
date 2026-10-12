@@ -1,2 +1,48 @@
 @import "tailwindcss";
 @import "@heroui/styles";
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --radius: 0.5rem;
+  --accent: oklch(0.3 0.015 260);
+  --accent-foreground: oklch(0.99 0 0);
+  --meter-fill: var(--foreground);
+  color-scheme: light;
+}
+:root.dark {
+  --accent: oklch(0.88 0.005 260);
+  --accent-foreground: oklch(0.2 0.005 260);
+  color-scheme: dark;
+}
+body {margin: 0; background: var(--background); color: var(--foreground); font-size: 14px;}
+.app-shell {max-width: 1380px; margin: 0 auto; padding: 36px 32px;}
+.table-scroll {overflow-x: auto;}
+table {width: 100%; border-collapse: separate; border-spacing: 0 6px; table-layout: fixed; min-width: 850px;}
+th {font-weight: 400; font-size: 12px; color: var(--muted); text-align: left; padding: 4px 16px 14px;}
+td {vertical-align: top; padding: 22px 16px; background: var(--surface);}
+th:first-child {width: 29%;}
+th:nth-child(2) {width: 10%;}
+th:nth-child(3), th:nth-child(4) {width: 18%;}
+th:nth-child(5) {width: 10%;}
+th:last-child {width: 15%;}
+td:first-child {border-radius: 6px 0 0 6px;}
+td:last-child {border-radius: 0 6px 6px 0;}
+.quota {min-width: 95px;}
+.meter {--meter-fill: var(--foreground);}
+.quota-low {background: var(--warning);}
+.current-tag {white-space: nowrap; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--default); color: var(--foreground);}
+.row-menu {height: 30px; min-width: 26px; padding: 0 4px; border-radius: 5px; font-weight: 600; cursor: pointer;}
+.row-menu:hover, .row-menu[data-hovered] {background: var(--default);}
+.row-menu:focus-visible {outline: 2px solid var(--focus); outline-offset: 2px;}
+.row-menu[data-disabled] {opacity: 0.5; cursor: default;}
+.row-error {margin-top: 10px; color: var(--danger); font-size: 11px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;}
+.feedback {font-size: 13px; line-height: 1.6; padding: 12px 14px; border-radius: 6px; background: var(--surface-secondary); margin-bottom: 18px; overflow-wrap: anywhere;}
+.feedback.error {color: var(--danger);}
+.feedback.success {color: var(--foreground);}
+.empty-state {min-height: 380px; display: flex; align-items: center; justify-content: center;}
+.credit-item {display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border-radius: 6px; background: var(--surface-secondary); overflow-wrap: anywhere;}
+.modal__dialog {border-radius: 8px;}
+.button {border-radius: 6px;}
+.input {border-radius: 6px;}
+.modal__body .feedback {margin-bottom: 0;}
+@media (max-width: 960px) {.app-shell {padding: 28px 20px;} td, th {padding-left: 12px; padding-right: 12px;}}

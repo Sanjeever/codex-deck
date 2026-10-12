@@ -80,7 +80,7 @@ func (s *Service) state() State {
 		if a.Usage != nil && a.Usage.Plan != "" {
 			plan = a.Usage.Plan
 		}
-		state.Accounts = append(state.Accounts, AccountView{ID: a.ID, AccountID: a.AccountID, Email: a.Email, Alias: a.Alias, Plan: plan, Current: mode == "file" && identityMatches(a, current), Usage: a.Usage, Credits: a.Credits, UsageError: s.usageErrors[a.ID], CreditsError: s.creditErrors[a.ID]})
+		state.Accounts = append(state.Accounts, AccountView{ID: a.ID, AccountID: a.AccountID, Email: a.Email, Alias: a.Alias, Plan: plan, Current: mode == "file" && identityMatches(a, current), Usage: a.Usage, Credits: a.Credits, UsageError: s.usageErrors[a.ID], CreditsError: s.creditErrors[a.ID], PendingReset: a.PendingReset})
 	}
 	return state
 }

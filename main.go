@@ -16,6 +16,7 @@ func main() {
 		Title: "Codex Deck", Width: 1120, Height: 720, MinWidth: 860, MinHeight: 500,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   app.startup,
+		OnShutdown:  app.shutdown,
 		Bind:        []interface{}{app},
 	}); err != nil {
 		println(err.Error())

@@ -81,16 +81,17 @@ type Data struct {
 
 // 前端只接收展示字段，账号令牌留在 Go 中。
 type AccountView struct {
-	ID           string   `json:"id"`
-	AccountID    string   `json:"account_id"`
-	Email        string   `json:"email"`
-	Alias        string   `json:"alias"`
-	Plan         string   `json:"plan"`
-	Current      bool     `json:"current"`
-	Usage        *Usage   `json:"usage"`
-	Credits      *Credits `json:"credits"`
-	UsageError   string   `json:"usage_error"`
-	CreditsError string   `json:"credits_error"`
+	ID           string        `json:"id"`
+	AccountID    string        `json:"account_id"`
+	Email        string        `json:"email"`
+	Alias        string        `json:"alias"`
+	Plan         string        `json:"plan"`
+	Current      bool          `json:"current"`
+	Usage        *Usage        `json:"usage"`
+	Credits      *Credits      `json:"credits"`
+	UsageError   string        `json:"usage_error"`
+	CreditsError string        `json:"credits_error"`
+	PendingReset *ResetRequest `json:"pending_reset"`
 }
 
 type BackupStatus struct {
