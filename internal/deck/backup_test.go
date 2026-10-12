@@ -210,3 +210,28 @@ func TestJianguoyunMetadataAndUnquotedETag(t *testing.T) {
 		t.Fatal("恢复预览丢失 HEAD 更新时间")
 	}
 }
+
+func TestMissingETagCannotBeConfirmedForOverwrite(t *testing.T) {
+	s := testService(t)
+	var writes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			writes.Add(1)
+		}
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+	if err := s.SaveSettings(Settings{WebDAVURL: server.URL}); err != nil {
+		t.Fatal(err)
+	}
+	waitBackup(t, s)
+	if !s.GetState().Backup.Conflict {
+		t.Fatal("已有无版本备份未要求确认")
+	}
+	if err := s.OverwriteBackup(); err == nil {
+		t.Fatal("无 ETag 仍允许盲覆盖")
+	}
+	if writes.Load() != 0 {
+		t.Fatal("无 ETag 的远端数据被写入")
+	}
+}

@@ -99,6 +99,10 @@ func (s *Service) backupManual(overwrite bool) error {
 	s.backupIO.Lock()
 	defer s.backupIO.Unlock()
 	s.mu.Lock()
+	if overwrite && s.backup.Conflict && s.conflictETag == "" {
+		s.mu.Unlock()
+		return fmt.Errorf("远端未提供 ETag，无法安全确认覆盖")
+	}
 	if overwrite && !s.backup.Conflict {
 		s.mu.Unlock()
 		return fmt.Errorf("覆盖确认已失效，请重新检查备份")

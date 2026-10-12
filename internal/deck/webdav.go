@@ -154,6 +154,7 @@ func writeBackup(ctx context.Context, d Data, expected string, checkExisting boo
 			return "", err
 		}
 		// 目录创建交给成熟 WebDAV 库；重试仍然带条件头。
+		client.SetTransport(backupContextTransport{ctx: ctx})
 		if err = client.MkdirAll(path.Dir(filename), 0700); err != nil {
 			return "", err
 		}
@@ -226,4 +227,10 @@ func readBackup(ctx context.Context, settings Settings) (Data, remoteBackup, err
 		meta.ModifiedAt = latest.ModifiedAt
 	}
 	return d, meta, nil
+}
+
+type backupContextTransport struct{ ctx context.Context }
+
+func (t backupContextTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return http.DefaultTransport.RoundTrip(r.WithContext(t.ctx))
 }
