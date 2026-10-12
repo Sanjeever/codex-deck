@@ -74,10 +74,11 @@ type ResetRequest struct {
 }
 
 type Data struct {
-	Version        int       `json:"version"`
-	Settings       Settings  `json:"settings"`
-	Accounts       []Account `json:"accounts"`
-	LastSwitchedID string    `json:"last_switched_id"`
+	Sync           BackupSync `json:"backup_sync,omitempty"`
+	Version        int        `json:"version"`
+	Settings       Settings   `json:"settings"`
+	Accounts       []Account  `json:"accounts"`
+	LastSwitchedID string     `json:"last_switched_id"`
 }
 
 // 前端只接收展示字段，账号令牌留在 Go 中。
@@ -97,8 +98,10 @@ type AccountView struct {
 }
 
 type BackupStatus struct {
-	At    *time.Time `json:"at"`
-	Error string     `json:"error"`
+	Busy     bool       `json:"busy"`
+	Conflict bool       `json:"conflict"`
+	At       *time.Time `json:"at"`
+	Error    string     `json:"error"`
 }
 
 type State struct {
@@ -108,4 +111,10 @@ type State struct {
 	CLIError      string        `json:"cli_error"`
 	Backup        BackupStatus  `json:"backup"`
 	NextRefreshAt *time.Time    `json:"next_refresh_at"`
+}
+
+type BackupSync struct {
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	ETag     string `json:"etag"`
 }

@@ -2,6 +2,7 @@ package deck
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/net/webdav"
@@ -21,12 +23,27 @@ func testWebDAV(t *testing.T) (Settings, string, func()) {
 		t.Fatal(err)
 	}
 	handler := &webdav.Handler{FileSystem: webdav.Dir(root), LockSystem: webdav.NewMemLS()}
+	var requests sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Lock()
+		defer requests.Unlock()
 		user, password, ok := r.BasicAuth()
 		if !ok || user != "test-user" || password != "test-password" {
 			w.Header().Set("WWW-Authenticate", `Basic realm="local-test"`)
 			w.WriteHeader(401)
 			return
+		}
+		// x/net/webdav 当前不处理 PUT 条件头，测试服务补齐 RFC 条件语义。
+		if r.Method == http.MethodPut {
+			head := httptest.NewRecorder()
+			request := r.Clone(r.Context())
+			request.Method = http.MethodHead
+			handler.ServeHTTP(head, request)
+			exists := head.Code == 200
+			if (r.Header.Get("If-None-Match") == "*" && exists) || (r.Header.Get("If-Match") != "" && (!exists || r.Header.Get("If-Match") != head.Header().Get("ETag"))) {
+				w.WriteHeader(412)
+				return
+			}
 		}
 		handler.ServeHTTP(w, r)
 	}))
@@ -89,13 +106,20 @@ func TestWebDAVFailureAndInvalidData(t *testing.T) {
 	}
 }
 
-type davTestTransport struct{ target *url.URL }
+type davTestTransport struct {
+	target *url.URL
+	base   http.RoundTripper
+}
 
 func (transport davTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	forward := request.Clone(request.Context())
 	forward.URL.Scheme = transport.target.Scheme
 	forward.URL.Host = transport.target.Host
-	return http.DefaultTransport.RoundTrip(forward)
+	base := transport.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(forward)
 }
 
 func TestJianguoyunRootBackupDirectory(t *testing.T) {
@@ -146,4 +170,36 @@ func TestJianguoyunRootBackupDirectory(t *testing.T) {
 			t.Fatal("改动其他 WebDAV 目录的备份位置")
 		}
 	}
+}
+
+// 测试夹具直接写入远端，用于模拟另一设备与无效备份。
+func uploadBackup(d Data) error {
+	client, path, err := webDAVClient(d.Settings)
+	if err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err = client.Write(path, b, 0600); err != nil {
+		return fmt.Errorf("WebDAV 备份失败: %w", err)
+	}
+	return nil
+}
+
+func downloadBackup(settings Settings) (Data, error) {
+	client, path, err := webDAVClient(settings)
+	if err != nil {
+		return Data{}, err
+	}
+	b, err := client.Read(path)
+	if err != nil {
+		return Data{}, fmt.Errorf("WebDAV 下载失败: %w", err)
+	}
+	d, err := parseData(b)
+	if err != nil {
+		return Data{}, fmt.Errorf("远端备份无效: %w", err)
+	}
+	return d, nil
 }

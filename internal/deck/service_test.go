@@ -20,6 +20,7 @@ func testService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(s.Shutdown)
 	return s
 }
 
@@ -221,6 +222,7 @@ func TestStartupImportBacksUpAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitBackup(t, s)
 	remote, err := downloadBackup(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -364,6 +366,7 @@ func TestCLISyncBacksUpOnlyChangedCredentials(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"plan_type":"plus"}`)) }))
 	defer server.Close()
 	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	waitBackup(t, s)
 	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -384,6 +387,7 @@ func TestCLISyncBacksUpOnlyChangedCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.RefreshAll()
+	waitBackup(t, s)
 	remote, err := downloadBackup(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -599,6 +603,10 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 		}(n)
 	}
 	wg.Wait()
+	if err := s.Backup(); err != nil {
+		t.Fatal(err)
+	}
+	waitBackup(t, s)
 	remote, err := downloadBackup(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -606,6 +614,7 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 	if remote.Accounts[0].Alias != s.store.Snapshot().Accounts[0].Alias {
 		t.Fatal("旧备份覆盖新数据")
 	}
+	waitBackup(t, s)
 	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -625,6 +634,9 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 	if err = s.SaveSettings(settings); err != nil {
 		t.Fatal(err)
 	}
+	if err = s.Backup(); err == nil {
+		t.Fatal("错误凭据未暴露")
+	}
 	if s.GetState().Backup.Error == "" || s.store.Snapshot().Settings.WebDAVPassword != "wrong" {
 		t.Fatal("备份失败隐藏或撤销本地保存")
 	}
@@ -640,6 +652,9 @@ func TestRestoreConfirmationAndCLIUntouched(t *testing.T) {
 	settings, _, closeServer := testWebDAV(t)
 	defer closeServer()
 	if err := s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Backup(); err != nil {
 		t.Fatal(err)
 	}
 	remote := Data{Version: Version, Settings: settings, Accounts: []Account{}}

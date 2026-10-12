@@ -10,7 +10,7 @@ it('自动请求期间仍能打开设置，返回结果不关闭弹窗或覆盖�
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
-  const state: State = {accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: ''}, next_refresh_at: new Date().toISOString()};
+  const state: State = {accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date().toISOString()};
   let complete!: (value: State) => void;
   const automatic = vi.fn(() => new Promise<State>(resolve => {complete = resolve}));
   const api = {CancelAutomatic: vi.fn(async () => {}), GetState: vi.fn(async () => state), RefreshAutomatic: automatic};

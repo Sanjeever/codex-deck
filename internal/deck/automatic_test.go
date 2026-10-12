@@ -94,6 +94,7 @@ func TestAutomaticRefreshPreservesDeletionAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(restarted.Shutdown)
 	id := restarted.GetState().Accounts[0].ID
 	if err := restarted.Delete(id); err != nil {
 		t.Fatal(err)
@@ -101,9 +102,20 @@ func TestAutomaticRefreshPreservesDeletionAndRestore(t *testing.T) {
 	if state := restarted.RefreshAutomatic(); len(state.Accounts) != 0 {
 		t.Fatal("自动刷新重新加入已删除账号")
 	}
-	restarted.restore = &Data{Version: Version, Accounts: []Account{}}
-	restarted.restoreID = "isolated-restore"
-	if err := restarted.Restore("isolated-restore"); err != nil {
+	settings, _, closeServer := testWebDAV(t)
+	defer closeServer()
+	if err := restarted.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	waitBackup(t, restarted)
+	if err := uploadBackup(Data{Version: Version, Settings: settings, Accounts: []Account{}}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := restarted.PrepareRestore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.Restore(preview.ID); err != nil {
 		t.Fatal(err)
 	}
 	if state := restarted.RefreshAutomatic(); len(state.Accounts) != 0 {

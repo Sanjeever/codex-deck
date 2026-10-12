@@ -8,6 +8,7 @@ import (
 
 	"codex-deck/internal/deck"
 	"github.com/pkg/browser"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -31,6 +32,9 @@ func (a *App) startup(ctx context.Context) {
 		cliHome = filepath.Join(home, ".codex")
 	}
 	a.service, a.err = deck.NewService(ctx, filepath.Join(home, ".codex-deck.json"), cliHome)
+	if a.err == nil {
+		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", state) })
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -195,4 +199,12 @@ func (a *App) CancelAutomatic() error {
 	}
 	s.CancelAutomatic()
 	return nil
+}
+
+func (a *App) OverwriteBackup() error {
+	s, err := a.backend()
+	if err != nil {
+		return err
+	}
+	return s.OverwriteBackup()
 }

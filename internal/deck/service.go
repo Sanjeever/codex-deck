@@ -13,26 +13,37 @@ import (
 )
 
 type Service struct {
-	mu           sync.Mutex
-	refreshMu    sync.Mutex
-	autoMu       sync.Mutex
-	autoCancel   context.CancelFunc
-	store        *Store
-	cli          CLI
-	oauth        OAuth
-	backend      Backend
-	ctx          context.Context
-	usageErrors  map[string]string
-	creditErrors map[string]string
-	usageTries   map[string]time.Time
-	cliIdentity  Identity
-	importError  string
-	backup       BackupStatus
-	restore      *Data
-	restoreID    string
-	loginMu      sync.Mutex
-	login        *Login
-	loginTarget  string
+	mu            sync.Mutex
+	refreshMu     sync.Mutex
+	autoMu        sync.Mutex
+	autoCancel    context.CancelFunc
+	store         *Store
+	cli           CLI
+	oauth         OAuth
+	backend       Backend
+	ctx           context.Context
+	usageErrors   map[string]string
+	creditErrors  map[string]string
+	usageTries    map[string]time.Time
+	cliIdentity   Identity
+	importError   string
+	onChange      func(State)
+	backup        BackupStatus
+	backupIO      sync.Mutex
+	backupOnce    sync.Once
+	backupWorkers sync.WaitGroup
+	backupWake    chan struct{}
+	backupPending bool
+	backupCancel  context.CancelFunc
+	conflictETag  string
+	restoreMeta   remoteBackup
+	restoreSource Settings
+	cancel        context.CancelFunc
+	restore       *Data
+	restoreID     string
+	loginMu       sync.Mutex
+	login         *Login
+	loginTarget   string
 }
 
 func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
@@ -40,9 +51,12 @@ func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	client := &http.Client{Timeout: 30 * time.Second}
-	s := &Service{store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}, usageTries: map[string]time.Time{}}
+	s := &Service{cancel: cancel, backupWake: make(chan struct{}, 1), store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}, usageTries: map[string]time.Time{}}
+	s.mu.Lock()
 	s.syncCLIAccount(false)
+	s.mu.Unlock()
 	return s, nil
 }
 
@@ -147,58 +161,55 @@ func (s *Service) state() State {
 
 func (s *Service) GetState() State { s.mu.Lock(); defer s.mu.Unlock(); return s.state() }
 
-// 所有变更和上传持有同一把锁，旧备份无法覆盖后续变更。
-func (s *Service) autoBackup() {
-	if s.store.Snapshot().Settings.WebDAVURL != "" {
-		s.backupNow()
-	}
+type PreviewAccount struct {
+	Email     string `json:"email"`
+	Alias     string `json:"alias"`
+	AccountID string `json:"account_id"`
 }
-func (s *Service) backupNow() error {
-	err := uploadBackup(s.store.Snapshot())
-	at := time.Now().UTC()
-	s.backup = BackupStatus{At: &at}
-	if err != nil {
-		s.backup.Error = err.Error()
-	}
-	return err
-}
-
-func (s *Service) Backup() error { s.mu.Lock(); defer s.mu.Unlock(); return s.backupNow() }
-
-func (s *Service) SaveSettings(settings Settings) error {
-	s.CancelAutomatic()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	settings.WebDAVURL = strings.TrimSpace(settings.WebDAVURL)
-	if err := validateSettings(settings); err != nil {
-		return err
-	}
-	if err := s.store.Update(func(d *Data) error { d.Settings = settings; return nil }); err != nil {
-		return err
-	}
-	s.backup = BackupStatus{}
-	s.autoBackup()
-	return nil
-}
-
 type RestorePreview struct {
-	ID        string `json:"id"`
-	Accounts  int    `json:"accounts"`
-	WebDAVURL string `json:"webdav_url"`
+	ID         string           `json:"id"`
+	Accounts   int              `json:"accounts"`
+	WebDAVURL  string           `json:"webdav_url"`
+	ModifiedAt *time.Time       `json:"modified_at"`
+	Added      []PreviewAccount `json:"added"`
+	Removed    []PreviewAccount `json:"removed"`
+}
+
+func accountDifference(left, right []Account) []PreviewAccount {
+	result := []PreviewAccount{}
+	for _, a := range left {
+		found := false
+		for _, b := range right {
+			if a.UserID == b.UserID && a.AccountID == b.AccountID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, PreviewAccount{Email: a.Email, Alias: a.Alias, AccountID: a.AccountID})
+		}
+	}
+	return result
 }
 
 func (s *Service) PrepareRestore() (RestorePreview, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.restore = nil
-	s.restoreID = ""
-	d, err := downloadBackup(s.store.Snapshot().Settings)
+	s.CancelAutomatic()
+	settings := s.store.Snapshot().Settings
+	d, meta, err := readBackup(s.ctx, settings)
 	if err != nil {
 		return RestorePreview{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	local := s.store.Snapshot()
+	if local.Settings != settings {
+		return RestorePreview{}, fmt.Errorf("设置已改变，请重新下载备份")
+	}
 	s.restore = &d
+	s.restoreMeta = meta
+	s.restoreSource = settings
 	s.restoreID = uuid.NewString()
-	return RestorePreview{ID: s.restoreID, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL}, nil
+	return RestorePreview{ID: s.restoreID, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL, ModifiedAt: meta.ModifiedAt, Added: accountDifference(d.Accounts, local.Accounts), Removed: accountDifference(local.Accounts, d.Accounts)}, nil
 }
 
 func (s *Service) CancelRestore() {
@@ -210,12 +221,35 @@ func (s *Service) CancelRestore() {
 
 func (s *Service) Restore(id string) error {
 	s.CancelAutomatic()
+	s.stopBackup()
+	s.backupIO.Lock()
+	defer s.backupIO.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.restore == nil || id != s.restoreID {
 		return fmt.Errorf("恢复预览已失效，请重新下载")
 	}
-	if err := s.store.Update(func(d *Data) error { *d = cloneData(*s.restore); return nil }); err != nil {
+	source, tag := s.restoreSource, s.restoreMeta.ETag
+	s.mu.Unlock()
+	meta, exists, err := backupMetadata(s.ctx, source)
+	s.mu.Lock()
+	if err != nil {
+		return err
+	}
+	if !exists || meta.ETag != tag {
+		return fmt.Errorf("远端备份已改变，请重新下载预览")
+	}
+	if s.restore == nil || id != s.restoreID || s.store.Snapshot().Settings != source {
+		return fmt.Errorf("恢复预览已失效，请重新下载")
+	}
+	if err := s.store.Update(func(d *Data) error {
+		*d = cloneData(*s.restore)
+		d.Sync = BackupSync{}
+		if d.Settings.WebDAVURL == source.WebDAVURL && d.Settings.WebDAVUsername == source.WebDAVUsername {
+			d.Sync = BackupSync{URL: source.WebDAVURL, Username: source.WebDAVUsername, ETag: tag}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	s.restore = nil
@@ -224,6 +258,8 @@ func (s *Service) Restore(id string) error {
 	s.creditErrors = map[string]string{}
 	s.usageTries = map[string]time.Time{}
 	s.backup = BackupStatus{}
+	s.conflictETag = ""
+	s.backupPending = false
 	return nil
 }
 
@@ -299,6 +335,10 @@ func (s *Service) CancelLogin(id string) {
 	}
 }
 func (s *Service) Shutdown() {
+	s.cancel()
+	s.CancelAutomatic()
+	s.stopBackup()
+	s.backupWorkers.Wait()
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	if s.login != nil {
@@ -650,4 +690,15 @@ func (s *Service) Consume(id, requestID string) (ConsumeResult, error) {
 		result.RefreshError = err.Error()
 	}
 	return result, nil
+}
+
+func (s *Service) SetOnChange(callback func(State)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onChange = callback
+}
+func (s *Service) publish() {
+	if s.onChange != nil {
+		s.onChange(s.state())
+	}
 }

@@ -3,12 +3,12 @@ import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, TextField} from '
 import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from './api';
 import {useAutoRefresh} from './useAutoRefresh';
 
-type Dialog = {kind: 'settings'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
+type Dialog = {kind: 'settings'} | {kind: 'overwrite'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
 type Notice = {kind: 'error' | 'success'; text: string};
 
 function errorText(error: unknown) {return error instanceof Error ? error.message : String(error)}
 function dateTime(value: string | null | undefined) {return value ? new Date(value).toLocaleString('zh-CN', {hour12: false}) : '未知'}
-function accountName(a: Account) {return a.alias || a.email || a.account_id}
+function accountName(a: {alias: string; email: string; account_id: string}) {return a.alias || a.email || a.account_id}
 function creditCount(a: Account) {
   if (a.usage?.reset_credits != null && (!a.credits || new Date(a.usage.queried_at) >= new Date(a.credits.queried_at))) return a.usage.reset_credits;
   return a.credits?.available_count ?? a.usage?.reset_credits ?? null;
@@ -80,6 +80,11 @@ export default function App() {
     if (dialog) void backend().CancelAutomatic().catch(error => setNotice({kind: 'error', text: errorText(error)}));
   }, [dialog]);
 
+  useEffect(() => window.runtime?.EventsOnMultiple('deck:state', response => {
+    stateRevision.current++;
+    setState(response);
+  }, -1), []);
+
   const close = async () => {
     if (busyRef.current && dialog?.kind !== 'login') return;
     if (dialog?.kind === 'login') {
@@ -145,8 +150,10 @@ export default function App() {
           <Field label="WebDAV 目录地址" type="url" value={settings.webdav_url} onChange={value => setSettings({...settings, webdav_url: value})} disabled={!!busy} />
           <Field label="用户名" value={settings.webdav_username} onChange={value => setSettings({...settings, webdav_username: value})} disabled={!!busy} />
           <Field label="密码" type="password" value={settings.webdav_password} onChange={value => setSettings({...settings, webdav_password: value})} disabled={!!busy} />
+          {state?.backup.busy && <p role="status" className="text-xs text-muted">正在备份</p>}
           {state?.backup.at && <p className={`text-xs ${state.backup.error ? 'text-danger' : 'text-muted'}`}>{state.backup.error || `备份成功 · ${dateTime(state.backup.at)}`}</p>}
           <div className="flex gap-2 pt-1">
+            {state?.backup.conflict && <Button variant="danger" size="sm" isDisabled={!!busy || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => setDialog({kind: 'overwrite'})}>覆盖远端</Button>}
             <Button variant="secondary" size="sm" isDisabled={!!busy || !state?.settings.webdav_url || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => void run('正在备份', () => backend().Backup(), () => setNotice({kind: 'success', text: '备份成功'}))}>备份</Button>
             <Button variant="secondary" size="sm" isDisabled={!!busy || !state?.settings.webdav_url || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => void run('正在下载备份', () => backend().PrepareRestore(), preview => setDialog({kind: 'restore', preview}))}>恢复</Button>
           </div>
@@ -161,8 +168,11 @@ export default function App() {
       case 'switch':
         title = '切换账号'; body = <p>CLI 当前使用 {state?.cli_store || '未知'} 存储。改为文件存储并切换至 {accountName(dialog.account)}？</p>;
         actions = <Button isDisabled={!!busy} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), () => success('已切换，重新启动 Codex CLI 后生效'))}>确认切换</Button>; break;
+      case 'overwrite':
+        title = '覆盖远端备份'; body = <p>用本地账号、认证和设置覆盖当前远端备份？其他设备的修改会被替换。</p>;
+        actions = <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在覆盖备份', () => backend().OverwriteBackup(), () => success('备份已覆盖'))}>确认覆盖</Button>; break;
       case 'restore':
-        title = '恢复备份'; body = <div className="space-y-3"><p>整体替换本地账号、认证和设置？</p><p className="text-sm text-muted">备份包含 {dialog.preview.accounts} 个账号。CLI 当前账号保持不变。</p>{dialog.preview.webdav_url !== state?.settings.webdav_url && <p className="text-sm text-muted break-all">恢复后的 WebDAV 地址为 {dialog.preview.webdav_url || '未配置'}。</p>}</div>;
+        title = '恢复备份'; body = <div className="space-y-3"><p>整体替换本地账号、认证和设置？</p><p className="text-sm text-muted">远端更新时间 · {dateTime(dialog.preview.modified_at)}</p>{dialog.preview.added.length > 0 && <div><p className="text-sm">新增账号</p>{dialog.preview.added.map(a => <p key={a.account_id + a.email} className="text-xs text-muted break-all">{accountName(a)} · {a.account_id}</p>)}</div>}{dialog.preview.removed.length > 0 && <div><p className="text-sm">移除账号</p>{dialog.preview.removed.map(a => <p key={a.account_id + a.email} className="text-xs text-muted break-all">{accountName(a)} · {a.account_id}</p>)}</div>}<p className="text-sm text-muted">备份包含 {dialog.preview.accounts} 个账号。CLI 当前账号保持不变。</p>{dialog.preview.webdav_url !== state?.settings.webdav_url && <p className="text-sm text-muted break-all">恢复后的 WebDAV 地址为 {dialog.preview.webdav_url || '未配置'}。</p>}</div>;
         actions = <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在恢复', () => backend().Restore(dialog.preview.id), () => success('备份已恢复'))}>确认替换</Button>; break;
       case 'consume':
         title = '使用重置卡'; body = <div className="space-y-2"><p>为 {accountName(dialog.account)} 消费一张重置卡？</p><p className="text-xs text-muted break-all">{dialog.account.email} · 工作区 {dialog.account.account_id}</p></div>;
@@ -197,7 +207,7 @@ export default function App() {
     {!dialog && feedback}
     {automatic.error && <p role="alert" className="feedback error">自动刷新失败：{automatic.error}</p>}
     {state?.cli_error && <p role="alert" className="feedback error">{state.cli_error}</p>}
-    {state?.backup.error && dialog?.kind !== 'settings' && <div className="feedback error flex items-center justify-between gap-3"><span>{state.backup.error}</span><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => void run('正在备份', () => backend().Backup())}>重试备份</Button></div>}
+    {state?.backup.error && dialog?.kind !== 'settings' && <div className="feedback error flex items-center justify-between gap-3"><span>{state.backup.error}</span><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => state.backup.conflict ? (setSettings({...state.settings}), setDialog({kind: 'settings'})) : void run('正在备份', () => backend().Backup())}>{state.backup.conflict ? '处理冲突' : '重试备份'}</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
     {state && state.accounts.length === 0 ? <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={() => void login()}>添加账号</Button></div> : state && <div className="table-scroll"><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
