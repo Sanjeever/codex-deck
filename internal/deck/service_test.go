@@ -555,7 +555,9 @@ func TestRefreshSavesTokensAndDetectsCLIChange(t *testing.T) {
 			}))
 			defer server.Close()
 			s.oauth = OAuth{Client: server.Client(), Issuer: server.URL}
+			s.mu.Lock()
 			_, err := s.prepareAccount(a.ID, false)
+			s.mu.Unlock()
 			if (err != nil) != concurrent {
 				t.Fatalf("CLI 并发变化处理错误: %v", err)
 			}

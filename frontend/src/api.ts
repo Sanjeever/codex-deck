@@ -12,6 +12,7 @@ interface Backend {
   GetState(): Promise<State>;
   RefreshAll(): Promise<State>;
   RefreshAutomatic(): Promise<State>;
+  CancelAutomatic(): Promise<void>;
   RefreshAccount(id: string): Promise<void>;
   RefreshCredits(id: string): Promise<void>;
   Rename(id: string, alias: string): Promise<void>;

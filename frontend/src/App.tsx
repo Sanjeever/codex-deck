@@ -58,6 +58,7 @@ export default function App() {
     stateRevision.current++;
     busyRef.current = true; setBusy(label); setNotice(null);
     try {
+      await backend().CancelAutomatic();
       const result = await action();
       setState(await backend().GetState());
       done?.(result);
@@ -74,6 +75,10 @@ export default function App() {
       const initial = await backend().GetState(); setState(initial);
     });
   }, [run]);
+
+  useEffect(() => {
+    if (dialog) void backend().CancelAutomatic().catch(error => setNotice({kind: 'error', text: errorText(error)}));
+  }, [dialog]);
 
   const close = async () => {
     if (busyRef.current && dialog?.kind !== 'login') return;
@@ -93,6 +98,7 @@ export default function App() {
     busyRef.current = true; setBusy('正在打开浏览器'); setNotice(null);
     let loginID = '';
     try {
+      await backend().CancelAutomatic();
       const session = await backend().BeginLogin(target); loginID = session.id;
       setDialog({kind: 'login', id: session.id}); setBusy('等待浏览器登录');
       await backend().WaitLogin(session.id);
@@ -183,7 +189,7 @@ export default function App() {
     <header className="flex items-center justify-between gap-4 pb-8">
       <h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>
       <div className="flex items-center gap-2">
-        <Button variant="secondary" size="sm" aria-label={automatic.refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || automatic.refreshing || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{automatic.refreshing && <Spinner size="sm" />}刷新</Button>
+        <Button variant="secondary" size="sm" aria-label={automatic.refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{automatic.refreshing && <Spinner size="sm" />}刷新</Button>
         <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => {setSettings({...state!.settings});setNotice(null);setDialog({kind: 'settings'})}}>设置</Button>
         <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
       </div>

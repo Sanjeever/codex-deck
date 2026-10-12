@@ -1,6 +1,9 @@
 package deck
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const autoRefreshInterval = 5 * time.Minute
 
@@ -23,16 +26,36 @@ func nextUsageRefresh(account Account, attemptedAt time.Time) time.Time {
 	return next
 }
 
+// 用户操作取消用量 GET 和批次剩余查询，不取消已发出的令牌交换。
+func (s *Service) CancelAutomatic() {
+	s.autoMu.Lock()
+	defer s.autoMu.Unlock()
+	if s.autoCancel != nil {
+		s.autoCancel()
+	}
+}
+
 func (s *Service) RefreshAutomatic() State {
+	s.autoMu.Lock()
+	if s.autoCancel != nil {
+		s.autoCancel()
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	s.autoCancel = cancel
+	s.autoMu.Unlock()
+	defer cancel()
 	s.mu.Lock()
 	s.syncCLIAccount(true)
 	accounts := s.store.Snapshot().Accounts
 	s.mu.Unlock()
 	for _, account := range accounts {
+		if ctx.Err() != nil {
+			break
+		}
 		s.mu.Lock()
 		current, err := findAccount(s.store.Snapshot(), account.ID)
 		if err == nil && current.AuthError == "" && !time.Now().Before(nextUsageRefresh(current, s.usageTries[current.ID])) {
-			s.refreshUsage(current.ID)
+			s.refreshUsageContext(ctx, current.ID)
 		}
 		s.mu.Unlock()
 	}

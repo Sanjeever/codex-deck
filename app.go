@@ -187,3 +187,12 @@ func (a *App) CancelLogin(id string) error {
 	s.CancelLogin(id)
 	return nil
 }
+
+func (a *App) CancelAutomatic() error {
+	s, err := a.backend()
+	if err != nil {
+		return err
+	}
+	s.CancelAutomatic()
+	return nil
+}

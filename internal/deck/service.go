@@ -14,6 +14,9 @@ import (
 
 type Service struct {
 	mu           sync.Mutex
+	refreshMu    sync.Mutex
+	autoMu       sync.Mutex
+	autoCancel   context.CancelFunc
 	store        *Store
 	cli          CLI
 	oauth        OAuth
@@ -163,6 +166,7 @@ func (s *Service) backupNow() error {
 func (s *Service) Backup() error { s.mu.Lock(); defer s.mu.Unlock(); return s.backupNow() }
 
 func (s *Service) SaveSettings(settings Settings) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	settings.WebDAVURL = strings.TrimSpace(settings.WebDAVURL)
@@ -205,6 +209,7 @@ func (s *Service) CancelRestore() {
 }
 
 func (s *Service) Restore(id string) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.restore == nil || id != s.restoreID {
@@ -223,6 +228,7 @@ func (s *Service) Restore(id string) error {
 }
 
 func (s *Service) Rename(id, alias string) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, err := findAccount(s.store.Snapshot(), id)
@@ -238,6 +244,7 @@ func (s *Service) Rename(id, alias string) error {
 }
 
 func (s *Service) Delete(id string) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.store.Update(func(d *Data) error {
@@ -358,7 +365,24 @@ func (s *Service) acceptLogin(target string, t Tokens, i Identity) error {
 	})
 }
 
+// 调用者持有 mu。令牌刷新串行执行，但等待和 HTTP 不占用状态锁。
 func (s *Service) prepareAccount(id string, force bool) (Account, error) {
+	before, _ := findAccount(s.store.Snapshot(), id)
+	s.mu.Unlock()
+	s.refreshMu.Lock()
+	s.mu.Lock()
+	defer s.refreshMu.Unlock()
+	latest, err := findAccount(s.store.Snapshot(), id)
+	if err != nil {
+		return latest, err
+	}
+	if latest.Tokens.AccessToken != before.Tokens.AccessToken {
+		force = false
+	}
+	return s.prepareAccountLocked(id, force)
+}
+
+func (s *Service) prepareAccountLocked(id string, force bool) (Account, error) {
 	a, err := findAccount(s.store.Snapshot(), id)
 	if err != nil {
 		return a, err
@@ -380,7 +404,17 @@ func (s *Service) prepareAccount(id string, force bool) (Account, error) {
 	if !force && time.Until(a.Tokens.ExpiresAt) > time.Minute {
 		return a, nil
 	}
+	s.mu.Unlock()
 	t, i, err := s.oauth.Refresh(s.ctx, a.Tokens)
+	s.mu.Lock()
+	latest, latestErr := findAccount(s.store.Snapshot(), id)
+	if latestErr != nil {
+		return latest, latestErr
+	}
+	if latest.Tokens.RefreshToken != a.Tokens.RefreshToken || latest.Tokens.AccessToken != a.Tokens.AccessToken {
+		return latest, nil
+	}
+	a = latest
 	if err != nil {
 		var authErr *AuthenticationError
 		if errors.As(err, &authErr) {
@@ -429,10 +463,22 @@ func (s *Service) authenticated(id string, request func(Account) error) error {
 	return err
 }
 
-func (s *Service) refreshUsage(id string) error {
+func (s *Service) refreshUsage(id string) error { return s.refreshUsageContext(s.ctx, id) }
+
+func (s *Service) refreshUsageContext(ctx context.Context, id string) error {
 	s.usageTries[id] = time.Now()
 	var usage *Usage
-	err := s.authenticated(id, func(a Account) error { var err error; usage, err = s.backend.Usage(s.ctx, a); return err })
+	err := s.authenticated(id, func(a Account) error {
+		s.mu.Unlock()
+		var err error
+		usage, err = s.backend.Usage(ctx, a)
+		s.mu.Lock()
+		return err
+	})
+	if ctx.Err() != nil {
+		delete(s.usageTries, id)
+		return ctx.Err()
+	}
 	if err == nil {
 		a, e := findAccount(s.store.Snapshot(), id)
 		if e != nil {
@@ -451,7 +497,13 @@ func (s *Service) refreshUsage(id string) error {
 
 func (s *Service) refreshCredits(id string) error {
 	var credits *Credits
-	err := s.authenticated(id, func(a Account) error { var err error; credits, err = s.backend.Credits(s.ctx, a); return err })
+	err := s.authenticated(id, func(a Account) error {
+		s.mu.Unlock()
+		var err error
+		credits, err = s.backend.Credits(s.ctx, a)
+		s.mu.Lock()
+		return err
+	})
 	if err == nil {
 		a, e := findAccount(s.store.Snapshot(), id)
 		if e != nil {
@@ -469,6 +521,7 @@ func (s *Service) refreshCredits(id string) error {
 }
 
 func (s *Service) RefreshAll() State {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.syncCLIAccount(false)
@@ -479,18 +532,21 @@ func (s *Service) RefreshAll() State {
 }
 
 func (s *Service) RefreshAccount(id string) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.syncCLIAccount(false)
 	return s.refreshUsage(id)
 }
 func (s *Service) RefreshCredits(id string) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.refreshCredits(id)
 }
 
 func (s *Service) Switch(id string, enableFile bool) error {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := findAccount(s.store.Snapshot(), id); err != nil {
@@ -525,6 +581,7 @@ func (s *Service) Switch(id string, enableFile bool) error {
 }
 
 func (s *Service) PrepareConsume(id, creditID string) (ResetRequest, error) {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, err := findAccount(s.store.Snapshot(), id)
@@ -547,6 +604,7 @@ func (s *Service) PrepareConsume(id, creditID string) (ResetRequest, error) {
 }
 
 func (s *Service) Consume(id, requestID string) (ConsumeResult, error) {
+	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, err := findAccount(s.store.Snapshot(), id)
@@ -570,7 +628,9 @@ func (s *Service) Consume(id, requestID string) (ConsumeResult, error) {
 	var result ConsumeResult
 	err = s.authenticated(id, func(account Account) error {
 		var e error
+		s.mu.Unlock()
 		result, e = s.backend.Consume(s.ctx, account, requestID, account.PendingReset.CreditID)
+		s.mu.Lock()
 		return e
 	})
 	if err != nil {
