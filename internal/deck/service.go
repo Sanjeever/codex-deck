@@ -21,6 +21,7 @@ type Service struct {
 	ctx          context.Context
 	usageErrors  map[string]string
 	creditErrors map[string]string
+	importError  string
 	backup       BackupStatus
 	restore      *Data
 	restoreID    string
@@ -35,7 +36,20 @@ func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
 		return nil, err
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
-	return &Service{store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}}, nil
+	s := &Service{store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}}
+	if len(store.Snapshot().Accounts) == 0 {
+		a, err := s.cli.ReadAccount()
+		if err == nil && a != nil {
+			err = s.acceptLogin("", a.Tokens, Identity{UserID: a.UserID, AccountID: a.AccountID, Email: a.Email, Plan: a.Plan})
+			if err == nil {
+				s.autoBackup()
+			}
+		}
+		if err != nil {
+			s.importError = fmt.Sprintf("自动导入 CLI 账号失败: %v", err)
+		}
+	}
+	return s, nil
 }
 
 func findAccount(d Data, id string) (Account, error) {
@@ -62,6 +76,9 @@ func (s *Service) saveAccount(a Account) error {
 func (s *Service) state() State {
 	d := s.store.Snapshot()
 	state := State{Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup}
+	if len(d.Accounts) == 0 {
+		state.CLIError = s.importError
+	}
 	mode, err := s.cli.StoreMode()
 	state.CLIStore = mode
 	var current Identity

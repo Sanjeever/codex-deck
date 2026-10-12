@@ -30,6 +30,206 @@ func addTestAccount(t *testing.T, s *Service, a Account) {
 	}
 }
 
+func TestStartupImportsCLIWhenEmpty(t *testing.T) {
+	for _, existingConfig := range []bool{false, true} {
+		t.Run(fmt.Sprint(existingConfig), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "deck.json")
+			if existingConfig {
+				if _, err := OpenStore(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cli := CLI{Home: t.TempDir()}
+			config := []byte("# keep settings\ncli_auth_credentials_store = \"file\"\nmodel = \"test-model\"\n")
+			if err := os.WriteFile(filepath.Join(cli.Home, "config.toml"), config, 0600); err != nil {
+				t.Fatal(err)
+			}
+			a := testAccount(t)
+			if err := cli.Write(a.Tokens); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := NewService(context.Background(), path, cli.Home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state := s.GetState()
+			if len(state.Accounts) != 1 || !state.Accounts[0].Current || state.Accounts[0].Email != a.Email || state.Accounts[0].Plan != a.Plan || state.CLIError != "" {
+				t.Fatal("启动未导入本地账号或当前状态错误")
+			}
+			reloaded, err := OpenStore(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := reloaded.Snapshot()
+			imported := data.Accounts[0]
+			if imported.ID == "" || imported.UserID != a.UserID || imported.AccountID != a.AccountID || imported.Tokens.IDToken != a.Tokens.IDToken || imported.Tokens.AccessToken != a.Tokens.AccessToken || imported.Tokens.RefreshToken != a.Tokens.RefreshToken || !imported.Tokens.LastRefresh.Equal(a.Tokens.LastRefresh) || imported.Tokens.ExpiresAt.IsZero() || data.LastSwitchedID != "" {
+				t.Fatal("导入丢失身份或凭据")
+			}
+			second, err := NewService(context.Background(), path, cli.Home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if accounts := second.GetState().Accounts; len(accounts) != 1 || accounts[0].ID != imported.ID {
+				t.Fatal("重启生成重复账号")
+			}
+			if err := second.Delete(imported.ID); err != nil {
+				t.Fatal(err)
+			}
+			if len(second.GetState().Accounts) != 0 || len(second.RefreshAll().Accounts) != 0 {
+				t.Fatal("删除后立即重新导入")
+			}
+			after, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			configAfter, err := os.ReadFile(filepath.Join(cli.Home, "config.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) || string(configAfter) != string(config) {
+				t.Fatal("导入或删除改写 CLI 文件")
+			}
+		})
+	}
+}
+
+func TestStartupKeepsExistingAccounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deck.json")
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := testAccount(t)
+	a.Alias = "已保存账号"
+	if err := store.Update(func(d *Data) error { d.Accounts = []Account{a}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := CLI{Home: t.TempDir()}
+	other := a.Tokens
+	other.AccountID = "other-workspace"
+	other.IDToken = testToken(t, a.UserID, other.AccountID, time.Now().Add(time.Hour))
+	other.AccessToken = other.IDToken
+	if err := cli.Write(other); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewService(context.Background(), path, cli.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := s.GetState()
+	if len(state.Accounts) != 1 || state.Accounts[0].ID != a.ID || state.Accounts[0].Alias != a.Alias || state.Accounts[0].Current {
+		t.Fatal("非空列表仍导入或覆盖账号")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("启动改写已有账号配置")
+	}
+}
+
+func TestStartupImportMissingOrInvalidCredentials(t *testing.T) {
+	a := testAccount(t)
+	valid := cliAuth{AuthMode: "chatgpt", Tokens: &cliTokens{IDToken: a.Tokens.IDToken, AccessToken: a.Tokens.AccessToken, RefreshToken: a.Tokens.RefreshToken, AccountID: a.AccountID}, LastRefresh: &a.Tokens.LastRefresh}
+	encode := func(auth cliAuth) []byte {
+		b, err := json.Marshal(auth)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	incomplete := valid
+	incomplete.Tokens = &cliTokens{IDToken: a.Tokens.IDToken, AccessToken: a.Tokens.AccessToken, AccountID: a.AccountID}
+	mismatch := valid
+	mismatch.Tokens = &cliTokens{IDToken: a.Tokens.IDToken, AccessToken: testToken(t, "other-user", a.AccountID, time.Now().Add(time.Hour)), RefreshToken: a.Tokens.RefreshToken, AccountID: a.AccountID}
+	for _, tc := range []struct {
+		name      string
+		auth      []byte
+		mode      string
+		wantError bool
+	}{
+		{name: "missing"},
+		{name: "invalid_json", auth: []byte(`{"tokens":`), wantError: true},
+		{name: "incomplete", auth: encode(incomplete), wantError: true},
+		{name: "identity_mismatch", auth: encode(mismatch), wantError: true},
+		{name: "keyring", auth: encode(valid), mode: "keyring", wantError: true},
+		{name: "api_key", auth: []byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"local-test-only"}`), wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cli := CLI{Home: t.TempDir()}
+			if tc.auth != nil {
+				if err := os.WriteFile(filepath.Join(cli.Home, "auth.json"), tc.auth, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.mode != "" {
+				if err := os.WriteFile(filepath.Join(cli.Home, "config.toml"), []byte(fmt.Sprintf("cli_auth_credentials_store = %q\n", tc.mode)), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path := filepath.Join(t.TempDir(), "deck.json")
+			s, err := NewService(context.Background(), path, cli.Home)
+			if err != nil {
+				t.Fatal("导入失败不应阻止应用启动", err)
+			}
+			state := s.GetState()
+			if len(state.Accounts) != 0 || (state.CLIError != "") != tc.wantError {
+				t.Fatal("无效认证被导入或未显示错误")
+			}
+			if len(s.store.Snapshot().Accounts) != 0 {
+				t.Fatal("无效凭据被保存")
+			}
+			if tc.auth != nil {
+				b, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(b) != string(tc.auth) {
+					t.Fatal("改写无效 CLI 认证")
+				}
+			}
+		})
+	}
+}
+
+func TestStartupImportBacksUpAccount(t *testing.T) {
+	settings, _, closeServer := testWebDAV(t)
+	defer closeServer()
+	path := filepath.Join(t.TempDir(), "deck.json")
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(func(d *Data) error { d.Settings = settings; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	cli := CLI{Home: t.TempDir()}
+	a := testAccount(t)
+	if err := cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewService(context.Background(), path, cli.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := downloadBackup(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remote.Accounts) != 1 || remote.Accounts[0].Tokens.RefreshToken != a.Tokens.RefreshToken || s.GetState().Backup.At == nil || s.GetState().Backup.Error != "" {
+		t.Fatal("自动导入未触发备份")
+	}
+}
+
 func TestAccountLoginDedupIdentityAndDelete(t *testing.T) {
 	s := testService(t)
 	a := testAccount(t)

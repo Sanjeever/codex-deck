@@ -129,6 +129,28 @@ func (c CLI) Write(t Tokens) error {
 	return atomicWrite(filepath.Join(c.Home, "auth.json"), b)
 }
 
+func (c CLI) ReadAccount() (*Account, error) {
+	mode, err := c.StoreMode()
+	if err != nil {
+		return nil, err
+	}
+	if mode != "file" {
+		return nil, fmt.Errorf("CLI 当前使用 %s 凭据存储，无法自动导入文件凭据", mode)
+	}
+	auth, i, err := c.Read()
+	if err != nil || auth == nil {
+		return nil, err
+	}
+	if auth.Tokens == nil || i.UserID == "" {
+		return nil, fmt.Errorf("CLI 当前认证不支持导入 ChatGPT 账号")
+	}
+	a, err := accountFromCLI(Account{UserID: i.UserID, AccountID: i.AccountID}, auth, i)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 func (c CLI) ImportCurrent(a Account) (Account, bool, error) {
 	mode, err := c.StoreMode()
 	if err != nil {
@@ -144,9 +166,14 @@ func (c CLI) ImportCurrent(a Account) (Account, bool, error) {
 	if auth == nil || auth.Tokens == nil || !identityMatches(a, i) {
 		return a, false, nil
 	}
+	a, err = accountFromCLI(a, auth, i)
+	return a, err == nil, err
+}
+
+func accountFromCLI(a Account, auth *cliAuth, i Identity) (Account, error) {
 	t := auth.Tokens
 	if t.AccessToken == "" || t.RefreshToken == "" {
-		return a, false, fmt.Errorf("CLI 当前账号认证不完整")
+		return a, fmt.Errorf("CLI 当前账号认证不完整")
 	}
 	a.Tokens.IDToken = t.IDToken
 	a.Tokens.AccessToken = t.AccessToken
@@ -157,26 +184,26 @@ func (c CLI) ImportCurrent(a Account) (Account, bool, error) {
 	}
 	claims, err := tokenClaims(t.AccessToken)
 	if err != nil {
-		return a, false, err
+		return a, err
 	}
 	accessIdentity, err := identityFromToken(t.AccessToken)
 	if err != nil {
-		return a, false, err
+		return a, err
 	}
 	if !identityMatches(a, accessIdentity) {
-		return a, false, fmt.Errorf("CLI 访问令牌身份不匹配")
+		return a, fmt.Errorf("CLI 访问令牌身份不匹配")
 	}
 	exp, err := claims.GetExpirationTime()
 	if err != nil {
-		return a, false, err
+		return a, err
 	}
 	if exp == nil {
-		return a, false, fmt.Errorf("CLI 访问令牌缺少到期时间")
+		return a, fmt.Errorf("CLI 访问令牌缺少到期时间")
 	}
 	a.Tokens.ExpiresAt = exp.Time
 	a.Email = i.Email
 	a.Plan = i.Plan
-	return a, true, nil
+	return a, nil
 }
 
 // 刷新期间 CLI 可能重新登录或刷新令牌，只在认证仍相同时写回。
