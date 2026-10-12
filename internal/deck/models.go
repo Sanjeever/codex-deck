@@ -100,9 +100,10 @@ type BackupStatus struct {
 }
 
 type State struct {
-	Accounts []AccountView `json:"accounts"`
-	Settings Settings      `json:"settings"`
-	CLIStore string        `json:"cli_store"`
-	CLIError string        `json:"cli_error"`
-	Backup   BackupStatus  `json:"backup"`
+	Accounts      []AccountView `json:"accounts"`
+	Settings      Settings      `json:"settings"`
+	CLIStore      string        `json:"cli_store"`
+	CLIError      string        `json:"cli_error"`
+	Backup        BackupStatus  `json:"backup"`
+	NextRefreshAt *time.Time    `json:"next_refresh_at"`
 }

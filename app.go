@@ -59,6 +59,13 @@ func (a *App) RefreshAll() (deck.State, error) {
 	}
 	return s.RefreshAll(), nil
 }
+func (a *App) RefreshAutomatic() (deck.State, error) {
+	s, err := a.backend()
+	if err != nil {
+		return deck.State{}, err
+	}
+	return s.RefreshAutomatic(), nil
+}
 func (a *App) RefreshAccount(id string) error {
 	s, err := a.backend()
 	if err != nil {

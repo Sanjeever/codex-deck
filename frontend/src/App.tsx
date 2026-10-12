@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, TextField} from '@heroui/react';
 import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from './api';
+import {useAutoRefresh} from './useAutoRefresh';
 
 type Dialog = {kind: 'settings'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
 type Notice = {kind: 'error' | 'success'; text: string};
@@ -41,9 +42,20 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>({webdav_url: '', webdav_username: '', webdav_password: ''});
   const [alias, setAlias] = useState('');
   const canceledLogin = useRef('');
+  const stateRevision = useRef(0);
+  const requestAutomatic = useCallback(async () => {
+    const revision = stateRevision.current;
+    const response = await backend().RefreshAutomatic();
+    return {revision, response};
+  }, []);
+  const applyAutomatic = useCallback((result: {revision: number; response: State}) => {
+    if (result.revision === stateRevision.current) setState(result.response);
+  }, []);
+  const automatic = useAutoRefresh(requestAutomatic, applyAutomatic, state !== null, !!busy || dialog !== null, state?.next_refresh_at ? Date.parse(state.next_refresh_at) : null);
 
   const run = useCallback(async <T,>(label: string, action: () => Promise<T>, done?: (result: T) => void) => {
     if (busyRef.current) return;
+    stateRevision.current++;
     busyRef.current = true; setBusy(label); setNotice(null);
     try {
       const result = await action();
@@ -60,14 +72,7 @@ export default function App() {
   useEffect(() => {
     void run('正在加载', async () => {
       const initial = await backend().GetState(); setState(initial);
-      if (initial.accounts.length) setState(await backend().RefreshAll());
     });
-    const syncCurrent = async () => {
-      if (busyRef.current) return;
-      try {setState(await backend().GetState())} catch (error) {setNotice({kind: 'error', text: errorText(error)})}
-    };
-    window.addEventListener('focus', syncCurrent);
-    return () => window.removeEventListener('focus', syncCurrent);
   }, [run]);
 
   const close = async () => {
@@ -84,6 +89,7 @@ export default function App() {
 
   const login = async (target = '') => {
     if (busyRef.current) return;
+    stateRevision.current++;
     busyRef.current = true; setBusy('正在打开浏览器'); setNotice(null);
     let loginID = '';
     try {
@@ -177,12 +183,13 @@ export default function App() {
     <header className="flex items-center justify-between gap-4 pb-8">
       <h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>
       <div className="flex items-center gap-2">
-        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>刷新</Button>
+        <Button variant="secondary" size="sm" aria-label={automatic.refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || automatic.refreshing || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{automatic.refreshing && <Spinner size="sm" />}刷新</Button>
         <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => {setSettings({...state!.settings});setNotice(null);setDialog({kind: 'settings'})}}>设置</Button>
         <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
       </div>
     </header>
     {!dialog && feedback}
+    {automatic.error && <p role="alert" className="feedback error">自动刷新失败：{automatic.error}</p>}
     {state?.cli_error && <p role="alert" className="feedback error">{state.cli_error}</p>}
     {state?.backup.error && dialog?.kind !== 'settings' && <div className="feedback error flex items-center justify-between gap-3"><span>{state.backup.error}</span><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => void run('正在备份', () => backend().Backup())}>重试备份</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
