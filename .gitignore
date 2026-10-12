@@ -3,7 +3,6 @@ frontend/dist/
 frontend/wailsjs/
 frontend/package.json.md5
 build/bin/
-build/appicon.png
 build/windows/icon.ico
 .DS_Store
 .playwright-mcp/
