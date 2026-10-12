@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/net/webdav"
@@ -83,5 +86,64 @@ func TestWebDAVFailureAndInvalidData(t *testing.T) {
 	settings.WebDAVPassword = "test-password"
 	if _, err := downloadBackup(settings); err == nil {
 		t.Fatal("接受未知版本")
+	}
+}
+
+type davTestTransport struct{ target *url.URL }
+
+func (transport davTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	forward := request.Clone(request.Context())
+	forward.URL.Scheme = transport.target.Scheme
+	forward.URL.Host = transport.target.Host
+	return http.DefaultTransport.RoundTrip(forward)
+}
+
+func TestJianguoyunRootBackupDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "dav"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	handler := &webdav.Handler{FileSystem: webdav.Dir(root), LockSystem: webdav.NewMemLS()}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && path.Dir(r.URL.Path) == "/dav" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []string{"https://dav.jianguoyun.com/dav/", "https://dav.jianguoyun.com/dav"} {
+		client, filename, err := webDAVClient(Settings{WebDAVURL: address})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filename != "codex-deck/codex-deck.json" {
+			t.Fatal("坚果云根地址未使用实际目录")
+		}
+		client.SetTransport(davTestTransport{target: target})
+		body := []byte(`{"version":1,"accounts":[],"settings":{}}`)
+		if err := client.Write(filename, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := client.Read(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(body) {
+			t.Fatal("备份与恢复路径不一致")
+		}
+	}
+	for _, address := range []string{"https://dav.jianguoyun.com/dav/custom/", "https://example.test/dav/"} {
+		_, filename, err := webDAVClient(Settings{WebDAVURL: address})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(filename, "/") {
+			t.Fatal("改动其他 WebDAV 目录的备份位置")
+		}
 	}
 }
