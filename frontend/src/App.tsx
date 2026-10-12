@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, TextField} from '@heroui/react';
 import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from './api';
 import {accountName as displayAccountName, privateText, usageStale, visibleAccounts, workspaceName} from './accounts';
+import {useKeyboardShortcuts} from './useKeyboardShortcuts';
 import {useAutoRefresh} from './useAutoRefresh';
 
 type Dialog = {kind: 'settings'} | {kind: 'overwrite'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
@@ -40,6 +41,7 @@ export default function App() {
   const busyRef = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [settings, setSettings] = useState<Settings>({webdav_url: '', webdav_username: '', webdav_password: ''});
+  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const privacy = state?.preferences.privacy ?? false;
   const accountName = (a: {alias: string; email: string; account_id: string}) => displayAccountName(a, privacy);
@@ -138,6 +140,12 @@ export default function App() {
     }
   };
 
+  const openSettings = () => {if (state) {setSettings({...state.settings}); setNotice(null); setDialog({kind: 'settings'})}};
+  useKeyboardShortcuts(!!state && !busy && !dialog, {
+    refresh: () => void run('正在刷新', () => backend().RefreshAll(), setState),
+    settings: openSettings, login: () => void login(), search: () => searchRef.current?.focus(),
+  });
+
   const activeAccount = dialog && 'account' in dialog ? state?.accounts.find(a => a.id === dialog.account.id) ?? dialog.account : null;
   const success = (text: string) => {setDialog(null); setNotice({kind: 'success', text})};
   const feedback = notice ? <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`feedback ${notice.kind}`}>{safeText(notice.text)}</p> : null;
@@ -206,17 +214,18 @@ export default function App() {
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && void run('正在保存', () => backend().SavePreferences({...state.preferences, privacy: !privacy}))}>隐私</Button>
         <Button variant="secondary" size="sm" aria-label={automatic.refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{automatic.refreshing && <Spinner size="sm" />}刷新</Button>
-        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => {setSettings({...state!.settings});setNotice(null);setDialog({kind: 'settings'})}}>设置</Button>
+        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={openSettings}>设置</Button>
         <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
       </div>
     </header>
     {!dialog && feedback}
     {automatic.error && <p role="alert" className="feedback error">自动刷新失败：{safeText(automatic.error)}</p>}
+    {state?.desktop_error && <p role="alert" className="feedback error">{safeText(state.desktop_error)}</p>}
     {state?.cli_error && <p role="alert" className="feedback error">{safeText(state.cli_error)}</p>}
     {state?.backup.error && dialog?.kind !== 'settings' && <div className="feedback error flex items-center justify-between gap-3"><span>{safeText(state.backup.error)}</span><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => state.backup.conflict ? (setSettings({...state.settings}), setDialog({kind: 'settings'})) : void run('正在备份', () => backend().Backup())}>{state.backup.conflict ? '处理冲突' : '重试备份'}</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
     {state && state.accounts.length > 0 && <div className="account-toolbar">
-      <TextField value={query} onChange={setQuery} aria-label="搜索账号" className="max-w-64"><Input placeholder="搜索账号" autoComplete="off" /></TextField>
+      <TextField value={query} onChange={setQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" /></TextField>
       <Dropdown><Dropdown.Trigger isDisabled={!!busy} className="sort-trigger">{({name: '账号名称', quota: '剩余额度'} as Record<string, string>)[state.preferences.sort] || '默认排序'} ▾</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="账号排序" onAction={key => void run('正在保存', () => backend().SavePreferences({...state.preferences, sort: String(key) === 'default' ? '' : String(key)}))}><Dropdown.Item id="default">默认排序</Dropdown.Item><Dropdown.Item id="name">账号名称</Dropdown.Item><Dropdown.Item id="quota">剩余额度</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
     </div>}
     {state && state.accounts.length > 0 && visibleAccounts(state.accounts, query, state.preferences.sort).length === 0 && <p className="py-12 text-center text-muted">没有匹配账号</p>}

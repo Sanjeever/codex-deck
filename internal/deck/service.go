@@ -27,6 +27,7 @@ type Service struct {
 	usageTries    map[string]time.Time
 	cliIdentity   Identity
 	importError   string
+	desktopError  string
 	watchError    string
 	watchWorkers  sync.WaitGroup
 	onChange      func(State)
@@ -137,7 +138,7 @@ func (s *Service) state() State {
 			nextRefresh = next
 		}
 	}
-	state := State{Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
+	state := State{DesktopError: s.desktopError, Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
 	if s.watchError != "" {
 		state.CLIError = strings.TrimSpace(state.CLIError + " " + s.watchError)
 	}

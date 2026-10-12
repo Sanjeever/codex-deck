@@ -12,6 +12,7 @@ import (
 )
 
 type App struct {
+	ctx     context.Context
 	ready   chan struct{}
 	service *deck.Service
 	err     error
@@ -20,6 +21,7 @@ type App struct {
 
 func NewApp() *App { return &App{ready: make(chan struct{})} }
 func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
 	defer close(a.ready)
 	ctx, a.cancel = context.WithCancel(ctx)
 	home, err := os.UserHomeDir()
