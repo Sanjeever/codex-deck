@@ -53,15 +53,23 @@ type Credits struct {
 }
 
 type Account struct {
-	ID        string   `json:"id"`
-	UserID    string   `json:"user_id"`
-	AccountID string   `json:"account_id"`
-	Email     string   `json:"email"`
-	Alias     string   `json:"alias"`
-	Plan      string   `json:"plan"`
-	Tokens    Tokens   `json:"tokens"`
-	Usage     *Usage   `json:"usage"`
-	Credits   *Credits `json:"credits"`
+	ID           string        `json:"id"`
+	UserID       string        `json:"user_id"`
+	AccountID    string        `json:"account_id"`
+	Email        string        `json:"email"`
+	Alias        string        `json:"alias"`
+	Plan         string        `json:"plan"`
+	Tokens       Tokens        `json:"tokens"`
+	Usage        *Usage        `json:"usage"`
+	Credits      *Credits      `json:"credits"`
+	PendingReset *ResetRequest `json:"pending_reset"`
+}
+
+type ResetRequest struct {
+	ID       string         `json:"id"`
+	CreditID string         `json:"credit_id"`
+	Started  bool           `json:"started"`
+	Result   *ConsumeResult `json:"result"`
 }
 
 type Data struct {

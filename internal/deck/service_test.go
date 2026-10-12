@@ -1,0 +1,345 @@
+package deck
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func testService(t *testing.T) *Service {
+	t.Helper()
+	s, err := NewService(context.Background(), filepath.Join(t.TempDir(), "deck.json"), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func addTestAccount(t *testing.T, s *Service, a Account) {
+	t.Helper()
+	if err := s.store.Update(func(d *Data) error { d.Accounts = append(d.Accounts, a); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAccountLoginDedupIdentityAndDelete(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	i, err := identityFromToken(a.Tokens.IDToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.acceptLogin("", a.Tokens, i); err != nil {
+		t.Fatal(err)
+	}
+	id := s.store.Snapshot().Accounts[0].ID
+	a.Tokens.RefreshToken = "updated"
+	if err = s.acceptLogin("", a.Tokens, i); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.store.Snapshot().Accounts) != 1 || s.store.Snapshot().Accounts[0].Tokens.RefreshToken != "updated" {
+		t.Fatal("登录生成重复记录或未更新认证")
+	}
+	other := i
+	other.AccountID = "other-workspace"
+	if err = s.acceptLogin(id, a.Tokens, other); err == nil {
+		t.Fatal("重登接受不同身份")
+	}
+	if err = s.Switch(id, false); err != nil {
+		t.Fatal(err)
+	}
+	if !s.GetState().Accounts[0].Current {
+		t.Fatal("当前账号识别错误")
+	}
+	if err = s.Rename(id, "新别名"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.GetState().Accounts) != 0 {
+		t.Fatal("删除失败")
+	}
+	_, cliIdentity, err := s.cli.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cliIdentity.AccountID != i.AccountID {
+		t.Fatal("删除修改 CLI")
+	}
+}
+
+func TestRefreshFailurePreservesCacheAndContinues(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	a.Usage = &Usage{Plan: "plus", FiveHour: &Window{RemainingPercent: 42}, QueriedAt: time.Now()}
+	addTestAccount(t, s, a)
+	other := a
+	other.ID = "other-record"
+	other.UserID = "other-user"
+	other.Tokens.IDToken = testToken(t, other.UserID, other.AccountID, time.Now().Add(time.Hour))
+	other.Tokens.AccessToken = other.Tokens.IDToken
+	other.Usage = nil
+	addTestAccount(t, s, other)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer "+a.Tokens.AccessToken {
+			w.WriteHeader(403)
+			return
+		}
+		w.Write([]byte(`{"plan_type":"pro","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":10}}}`))
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	state := s.RefreshAll()
+	if state.Accounts[0].Usage.FiveHour.RemainingPercent != 42 || state.Accounts[0].UsageError == "" {
+		t.Fatal("失败覆盖缓存或隐藏错误")
+	}
+	if state.Accounts[1].Usage.FiveHour.RemainingPercent != 90 || state.Accounts[1].Plan != "pro" {
+		t.Fatal("单账号失败阻止其他查询")
+	}
+}
+
+func TestRefreshSavesTokensAndDetectsCLIChange(t *testing.T) {
+	for _, concurrent := range []bool{false, true} {
+		t.Run(fmt.Sprint(concurrent), func(t *testing.T) {
+			s := testService(t)
+			a := testAccount(t)
+			a.Tokens.ExpiresAt = time.Now().Add(-time.Hour)
+			addTestAccount(t, s, a)
+			expired := testToken(t, a.UserID, a.AccountID, time.Now().Add(-time.Hour))
+			a.Tokens.IDToken = expired
+			a.Tokens.AccessToken = expired
+			a.Tokens.LastRefresh = time.Now()
+			if err := s.saveAccount(a); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.cli.Write(a.Tokens); err != nil {
+				t.Fatal(err)
+			}
+			fresh := testToken(t, a.UserID, a.AccountID, time.Now().Add(time.Hour))
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]string
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				if body["refresh_token"] != a.Tokens.RefreshToken {
+					t.Error("使用过时副本")
+				}
+				if concurrent {
+					c := a
+					c.Tokens.RefreshToken = "cli-concurrent"
+					if err := s.cli.Write(c.Tokens); err != nil {
+						t.Error(err)
+					}
+				}
+				json.NewEncoder(w).Encode(map[string]interface{}{"id_token": fresh, "access_token": fresh, "refresh_token": "new-refresh", "expires_in": 3600})
+			}))
+			defer server.Close()
+			s.oauth = OAuth{Client: server.Client(), Issuer: server.URL}
+			_, err := s.prepareAccount(a.ID, false)
+			if (err != nil) != concurrent {
+				t.Fatalf("CLI 并发变化处理错误: %v", err)
+			}
+			if s.store.Snapshot().Accounts[0].Tokens.RefreshToken != "new-refresh" {
+				t.Fatal("刷新未持久保存")
+			}
+			auth, _, err := s.cli.Read()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "new-refresh"
+			if concurrent {
+				want = "cli-concurrent"
+			}
+			if auth.Tokens.RefreshToken != want {
+				t.Fatal("CLI 写回错误")
+			}
+		})
+	}
+}
+
+func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	settings, root, closeServer := testWebDAV(t)
+	defer closeServer()
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for n := 0; n < 5; n++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			if err := s.Rename(a.ID, fmt.Sprint(n)); err != nil {
+				t.Error(err)
+			}
+		}(n)
+	}
+	wg.Wait()
+	remote, err := downloadBackup(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remote.Accounts[0].Alias != s.store.Snapshot().Accounts[0].Alias {
+		t.Fatal("旧备份覆盖新数据")
+	}
+	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"plan_type":"plus"}`)) }))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	s.RefreshAll()
+	after, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("单纯用量刷新触发备份")
+	}
+	settings.WebDAVPassword = "wrong"
+	if err = s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if s.GetState().Backup.Error == "" || s.store.Snapshot().Settings.WebDAVPassword != "wrong" {
+		t.Fatal("备份失败隐藏或撤销本地保存")
+	}
+}
+
+func TestRestoreConfirmationAndCLIUntouched(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	if err := s.Switch(a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	settings, _, closeServer := testWebDAV(t)
+	defer closeServer()
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	remote := Data{Version: Version, Settings: settings, Accounts: []Account{}}
+	if err := uploadBackup(remote); err != nil {
+		t.Fatal(err)
+	}
+	cliBefore, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := s.PrepareRestore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.store.Snapshot().Accounts) != 1 {
+		t.Fatal("下载即覆盖本地")
+	}
+	s.CancelRestore()
+	if err := s.Restore(preview.ID); err == nil {
+		t.Fatal("接受取消预览")
+	}
+	preview, err = s.PrepareRestore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Restore(preview.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.GetState().Accounts) != 0 {
+		t.Fatal("恢复未整体替换")
+	}
+	cliAfter, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(cliBefore) != string(cliAfter) {
+		t.Fatal("恢复切换 CLI")
+	}
+	downloaded, err := downloadBackup(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(downloaded.Accounts) != 0 {
+		t.Fatal("恢复自动上传")
+	}
+}
+
+func TestConsumePersistentIdempotencyAndRefresh(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	var attempts atomic.Int32
+	var gotID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/wham/rate-limit-reset-credits/consume":
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if gotID != "" && body["redeem_request_id"] != gotID {
+				t.Error("重试更换请求标识")
+			}
+			gotID = body["redeem_request_id"]
+			if attempts.Add(1) == 1 {
+				w.WriteHeader(503)
+				return
+			}
+			w.Write([]byte(`{"code":"reset","windows_reset":2}`))
+		case "/wham/usage":
+			w.Write([]byte(`{"plan_type":"plus","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":5}},"rate_limit_reset_credits":{"available_count":0}}`))
+		case "/wham/rate-limit-reset-credits":
+			w.Write([]byte(`{"available_count":0,"credits":[]}`))
+		default:
+			t.Error("错误地址")
+		}
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	req, err := s.PrepareConsume(a.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Consume(a.ID, req.ID); err == nil {
+		t.Fatal("未暴露消费失败")
+	}
+	reloaded, err := OpenStore(s.store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.store = reloaded
+	retry, err := s.PrepareConsume(a.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.ID != req.ID {
+		t.Fatal("重启丢失请求标识")
+	}
+	result, err := s.Consume(a.ID, retry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != "reset" {
+		t.Fatal("消费结果错误")
+	}
+	if _, err = s.Consume(a.ID, retry.ID); err != nil {
+		t.Fatal(err)
+	}
+	if attempts.Load() != 2 {
+		t.Fatal("重复点击重复消费")
+	}
+	state := s.GetState()
+	if state.Accounts[0].Usage.FiveHour.RemainingPercent != 95 || state.Accounts[0].Credits.AvailableCount != 0 {
+		t.Fatal("消费后未查询或伪造额度")
+	}
+}
