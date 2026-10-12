@@ -34,6 +34,7 @@ func (a *App) startup(ctx context.Context) {
 	a.service, a.err = deck.NewService(ctx, filepath.Join(home, ".codex-deck.json"), cliHome)
 	if a.err == nil {
 		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", state) })
+		a.err = a.service.StartWatching()
 	}
 }
 

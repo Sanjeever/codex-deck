@@ -27,6 +27,8 @@ type Service struct {
 	usageTries    map[string]time.Time
 	cliIdentity   Identity
 	importError   string
+	watchError    string
+	watchWorkers  sync.WaitGroup
 	onChange      func(State)
 	backup        BackupStatus
 	backupIO      sync.Mutex
@@ -136,6 +138,9 @@ func (s *Service) state() State {
 		}
 	}
 	state := State{Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
+	if s.watchError != "" {
+		state.CLIError = strings.TrimSpace(state.CLIError + " " + s.watchError)
+	}
 	mode, err := s.cli.StoreMode()
 	state.CLIStore = mode
 	var current Identity
@@ -339,6 +344,7 @@ func (s *Service) Shutdown() {
 	s.CancelAutomatic()
 	s.stopBackup()
 	s.backupWorkers.Wait()
+	s.watchWorkers.Wait()
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	if s.login != nil {
