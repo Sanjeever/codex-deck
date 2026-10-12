@@ -162,7 +162,7 @@ export default function App() {
         body = <div className="space-y-5">
           {state && <div className="flex items-center justify-between gap-4">
             <Switch isSelected={state.preferences.low_quota_notify} isDisabled={!!busy} onChange={value => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_notify: value}))}>
-              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control></Switch.Content><Label>低额度通知</Label>
+              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>低额度通知</Label></Switch.Content>
             </Switch>
             <Dropdown><Dropdown.Trigger isDisabled={!!busy || !state.preferences.low_quota_notify} className="sort-trigger" aria-label="通知阈值">{state.preferences.low_quota_threshold || 10}% ▾</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="通知阈值" onAction={key => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_threshold: Number(key)}))}>{[5, 10, 20].map(value => <Dropdown.Item key={value} id={String(value)}>{value}%</Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
           </div>}

@@ -55,6 +55,9 @@ func parseData(b []byte) (Data, error) {
 	if err := validateSettings(d.Settings); err != nil {
 		return d, err
 	}
+	if d.Window != nil && (d.Window.Width < 860 || d.Window.Height < 500) {
+		return d, fmt.Errorf("窗口尺寸小于最小值")
+	}
 	if err := validatePreferences(d.Preferences); err != nil {
 		return d, err
 	}
