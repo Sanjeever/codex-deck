@@ -2,6 +2,8 @@
 
 Codex Deck 是管理 Codex CLI 多账号、套餐额度和重置卡的桌面应用。后端使用 Go 和 Wails v2，前端使用 React 19、TypeScript、HeroUI v3 和 Tailwind CSS v4。
 
+![Codex Deck 账号列表与操作菜单](docs/screenshots/accounts.png)
+
 ## 功能
 
 - 浏览器 OAuth 登录、取消登录和重新登录，按用户与工作区身份区分账号。
