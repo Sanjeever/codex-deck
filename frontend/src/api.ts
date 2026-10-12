@@ -1,4 +1,4 @@
-export interface Preferences {privacy: boolean; sort: string}
+export interface Preferences {privacy: boolean; sort: string; low_quota_notify: boolean; low_quota_threshold: number}
 export interface Settings {webdav_url: string; webdav_username: string; webdav_password: string}
 export interface QuotaWindow {remaining_percent: number; reset_at: string | null}
 export interface Usage {plan: string; five_hour: QuotaWindow | null; weekly: QuotaWindow | null; reset_credits: number | null; queried_at: string}

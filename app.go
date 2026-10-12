@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"codex-deck/internal/deck"
 	"github.com/pkg/browser"
@@ -12,11 +13,13 @@ import (
 )
 
 type App struct {
-	ctx     context.Context
-	ready   chan struct{}
-	service *deck.Service
-	err     error
-	cancel  context.CancelFunc
+	notificationMu     sync.Mutex
+	notificationsReady bool
+	ctx                context.Context
+	ready              chan struct{}
+	service            *deck.Service
+	err                error
+	cancel             context.CancelFunc
 }
 
 func NewApp() *App { return &App{ready: make(chan struct{})} }
@@ -35,6 +38,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.service, a.err = deck.NewService(ctx, filepath.Join(home, ".codex-deck.json"), cliHome)
 	if a.err == nil {
+		a.service.SetNotifier(a.notifyLowQuota)
 		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", state) })
 		a.err = a.service.StartWatching()
 	}
@@ -47,6 +51,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.service != nil {
 		a.service.Shutdown()
+		if a.notificationsReady {
+			runtime.CleanupNotifications(a.ctx)
+		}
 	}
 }
 
@@ -216,6 +223,18 @@ func (a *App) SavePreferences(p deck.Preferences) error {
 	s, err := a.backend()
 	if err != nil {
 		return err
+	}
+	if p.LowQuotaNotify && !s.GetState().Preferences.LowQuotaNotify {
+		if err := a.initialiseNotifications(); err != nil {
+			return err
+		}
+		granted, err := runtime.RequestNotificationAuthorization(a.ctx)
+		if err != nil {
+			return fmt.Errorf("请求通知权限失败: %w", err)
+		}
+		if !granted {
+			return fmt.Errorf("通知权限未开启，请在系统设置中允许 Codex Deck 发送通知")
+		}
 	}
 	return s.SavePreferences(p)
 }

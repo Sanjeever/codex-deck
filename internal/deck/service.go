@@ -13,40 +13,42 @@ import (
 )
 
 type Service struct {
-	mu            sync.Mutex
-	refreshMu     sync.Mutex
-	autoMu        sync.Mutex
-	autoCancel    context.CancelFunc
-	store         *Store
-	cli           CLI
-	oauth         OAuth
-	backend       Backend
-	ctx           context.Context
-	usageErrors   map[string]string
-	creditErrors  map[string]string
-	usageTries    map[string]time.Time
-	cliIdentity   Identity
-	importError   string
-	desktopError  string
-	watchError    string
-	watchWorkers  sync.WaitGroup
-	onChange      func(State)
-	backup        BackupStatus
-	backupIO      sync.Mutex
-	backupOnce    sync.Once
-	backupWorkers sync.WaitGroup
-	backupWake    chan struct{}
-	backupPending bool
-	backupCancel  context.CancelFunc
-	conflictETag  string
-	restoreMeta   remoteBackup
-	restoreSource Settings
-	cancel        context.CancelFunc
-	restore       *Data
-	restoreID     string
-	loginMu       sync.Mutex
-	login         *Login
-	loginTarget   string
+	mu                  sync.Mutex
+	refreshMu           sync.Mutex
+	autoMu              sync.Mutex
+	autoCancel          context.CancelFunc
+	store               *Store
+	cli                 CLI
+	oauth               OAuth
+	backend             Backend
+	ctx                 context.Context
+	usageErrors         map[string]string
+	creditErrors        map[string]string
+	usageTries          map[string]time.Time
+	cliIdentity         Identity
+	importError         string
+	notifier            func(string) error
+	notificationWorkers sync.WaitGroup
+	desktopError        string
+	watchError          string
+	watchWorkers        sync.WaitGroup
+	onChange            func(State)
+	backup              BackupStatus
+	backupIO            sync.Mutex
+	backupOnce          sync.Once
+	backupWorkers       sync.WaitGroup
+	backupWake          chan struct{}
+	backupPending       bool
+	backupCancel        context.CancelFunc
+	conflictETag        string
+	restoreMeta         remoteBackup
+	restoreSource       Settings
+	cancel              context.CancelFunc
+	restore             *Data
+	restoreID           string
+	loginMu             sync.Mutex
+	login               *Login
+	loginTarget         string
 }
 
 func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
@@ -346,6 +348,7 @@ func (s *Service) Shutdown() {
 	s.stopBackup()
 	s.backupWorkers.Wait()
 	s.watchWorkers.Wait()
+	s.notificationWorkers.Wait()
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	if s.login != nil {
@@ -532,7 +535,11 @@ func (s *Service) refreshUsageContext(ctx context.Context, id string) error {
 			return e
 		}
 		a.Usage = usage
+		message := s.lowQuotaNotice(&a, s.store.Snapshot().Preferences)
 		err = s.saveAccount(a)
+		if err == nil {
+			s.sendQuotaNotice(message)
+		}
 	}
 	if err != nil {
 		s.usageErrors[id] = err.Error()

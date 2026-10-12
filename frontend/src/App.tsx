@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
-import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, TextField} from '@heroui/react';
+import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, Switch, TextField} from '@heroui/react';
 import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from './api';
 import {accountName as displayAccountName, privateText, usageStale, visibleAccounts, workspaceName} from './accounts';
 import {useKeyboardShortcuts} from './useKeyboardShortcuts';
@@ -160,6 +160,12 @@ export default function App() {
       case 'settings':
         title = '设置';
         body = <div className="space-y-5">
+          {state && <div className="flex items-center justify-between gap-4">
+            <Switch isSelected={state.preferences.low_quota_notify} isDisabled={!!busy} onChange={value => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_notify: value}))}>
+              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control></Switch.Content><Label>低额度通知</Label>
+            </Switch>
+            <Dropdown><Dropdown.Trigger isDisabled={!!busy || !state.preferences.low_quota_notify} className="sort-trigger" aria-label="通知阈值">{state.preferences.low_quota_threshold || 10}% ▾</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="通知阈值" onAction={key => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_threshold: Number(key)}))}>{[5, 10, 20].map(value => <Dropdown.Item key={value} id={String(value)}>{value}%</Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
+          </div>}
           <Field label="WebDAV 目录地址" type="url" value={settings.webdav_url} onChange={value => setSettings({...settings, webdav_url: value})} disabled={!!busy} />
           <Field label="用户名" type={privacy ? 'password' : 'text'} value={settings.webdav_username} onChange={value => setSettings({...settings, webdav_username: value})} disabled={!!busy} />
           <Field label="密码" type="password" value={settings.webdav_password} onChange={value => setSettings({...settings, webdav_password: value})} disabled={!!busy} />

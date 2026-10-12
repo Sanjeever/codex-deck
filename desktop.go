@@ -20,6 +20,11 @@ func (a *App) domReady(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	if s.GetState().Preferences.LowQuotaNotify {
+		if err := a.initialiseNotifications(); err != nil {
+			s.SetDesktopError(err)
+		}
+	}
 	window := s.WindowState()
 	if window == nil {
 		return
@@ -59,4 +64,26 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		return true
 	}
 	return false
+}
+
+func (a *App) initialiseNotifications() error {
+	a.notificationMu.Lock()
+	defer a.notificationMu.Unlock()
+	if a.notificationsReady {
+		return nil
+	}
+	if !runtime.IsNotificationAvailable(a.ctx) {
+		return fmt.Errorf("当前系统无法发送桌面通知")
+	}
+	if err := runtime.InitializeNotifications(a.ctx); err != nil {
+		return fmt.Errorf("初始化通知失败: %w", err)
+	}
+	a.notificationsReady = true
+	return nil
+}
+func (a *App) notifyLowQuota(body string) error {
+	if err := a.initialiseNotifications(); err != nil {
+		return err
+	}
+	return runtime.SendNotification(a.ctx, runtime.NotificationOptions{ID: "codex-deck-low-quota", Title: "Codex Deck", Body: body})
 }

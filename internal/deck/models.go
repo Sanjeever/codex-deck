@@ -53,17 +53,18 @@ type Credits struct {
 }
 
 type Account struct {
-	ID           string        `json:"id"`
-	UserID       string        `json:"user_id"`
-	AccountID    string        `json:"account_id"`
-	Email        string        `json:"email"`
-	Alias        string        `json:"alias"`
-	Plan         string        `json:"plan"`
-	AuthError    string        `json:"auth_error,omitempty"`
-	Tokens       Tokens        `json:"tokens"`
-	Usage        *Usage        `json:"usage"`
-	Credits      *Credits      `json:"credits"`
-	PendingReset *ResetRequest `json:"pending_reset"`
+	ID            string             `json:"id"`
+	UserID        string             `json:"user_id"`
+	AccountID     string             `json:"account_id"`
+	Email         string             `json:"email"`
+	Alias         string             `json:"alias"`
+	Plan          string             `json:"plan"`
+	Notifications QuotaNotifications `json:"notifications"`
+	AuthError     string             `json:"auth_error,omitempty"`
+	Tokens        Tokens             `json:"tokens"`
+	Usage         *Usage             `json:"usage"`
+	Credits       *Credits           `json:"credits"`
+	PendingReset  *ResetRequest      `json:"pending_reset"`
 }
 
 type ResetRequest struct {
@@ -124,6 +125,8 @@ type BackupSync struct {
 }
 
 type Preferences struct {
-	Privacy bool   `json:"privacy"`
-	Sort    string `json:"sort"`
+	LowQuotaNotify    bool   `json:"low_quota_notify"`
+	LowQuotaThreshold int    `json:"low_quota_threshold"`
+	Privacy           bool   `json:"privacy"`
+	Sort              string `json:"sort"`
 }
