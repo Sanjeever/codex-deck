@@ -270,7 +270,7 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 		if !strings.HasSuffix(d.Name(), ".jsonl") {
 			return nil
 		}
-		e, f, readErr := s.load(path, search != "")
+		e, f, readErr := s.load(path, false)
 		if readErr != nil {
 			page.Issues = append(page.Issues, Issue{File: s.label(path), Message: readErr.Error()})
 			return nil
@@ -298,22 +298,20 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 			if matched {
 				summary.Snippet = excerpt(metadata, search, 180)
 			}
-			for _, event := range e.doc.events {
-				text, textErr := eventText(f, event)
-				if textErr != nil {
-					page.Issues = append(page.Issues, Issue{File: s.label(path), Message: textErr.Error()})
-					break
-				}
-				if strings.Contains(strings.ToLower(event.Name+"\n"+text), strings.ToLower(search)) {
-					matched = true
-					summary.Snippet = excerpt(text, search, 180)
-					summary.MatchEventID = event.ID
-					lower := strings.ToLower(text)
-					if index := strings.Index(lower, strings.ToLower(search)); index >= 0 {
-						summary.MatchTextOffset = len([]rune(lower[:index]))
-					}
-					break
-				}
+			d, searchErr := readMatches(s.ctx, f, s.label(path), search)
+			if searchErr != nil {
+				return searchErr
+			}
+			if err := s.unchanged(e, f); err != nil {
+				page.Issues = append(page.Issues, Issue{File: s.label(path), Message: err.Error()})
+				return nil
+			}
+			if len(d.matches) > 0 {
+				matched = true
+				match := d.matches[0]
+				summary.Snippet = match.Snippet
+				summary.MatchEventID = match.EventID
+				summary.MatchTextOffset = match.TextOffset
 			}
 			if !matched {
 				return nil
@@ -458,7 +456,11 @@ func (s *Service) Find(query MatchQuery) (MatchPage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	page := MatchPage{Matches: []Match{}, Issues: []Issue{}}
-	e, f, err := s.session(query.ID)
+	e := s.files[query.ID]
+	if e == nil {
+		return page, fmt.Errorf("会话未找到，请刷新列表后重试")
+	}
+	e, f, err := s.load(e.path, false)
 	if err != nil {
 		return page, err
 	}
@@ -468,35 +470,19 @@ func (s *Service) Find(query MatchQuery) (MatchPage, error) {
 	if search == "" {
 		return page, nil
 	}
-	pageKey := key(query.ID, e.revision, search)
-	start, err := parseCursor(query.Cursor, pageKey, len(e.doc.events))
+	d, err := readMatches(s.ctx, f, s.label(e.path), search)
 	if err != nil {
 		return page, err
 	}
-	for i := start; i < len(e.doc.events); i++ {
-		if err := s.ctx.Err(); err != nil {
-			return page, err
-		}
-		event := e.doc.events[i]
-		text, err := eventText(f, event)
-		if err != nil {
-			return page, err
-		}
-		lower := strings.ToLower(text)
-		index := strings.Index(lower, strings.ToLower(search))
-		if index >= 0 || strings.Contains(strings.ToLower(event.Name), strings.ToLower(search)) {
-			offset := 0
-			if index >= 0 {
-				offset = len([]rune(lower[:index]))
-			}
-			page.Matches = append(page.Matches, Match{EventID: event.ID, Turn: event.Turn, Snippet: excerpt(text, search, 180), TextOffset: offset})
-			if len(page.Matches) == matchPageSize {
-				if i+1 < len(e.doc.events) {
-					page.NextCursor = cursor(pageKey, i+1)
-				}
-				break
-			}
-		}
+	pageKey := key(query.ID, e.revision, search)
+	start, err := parseCursor(query.Cursor, pageKey, len(d.matches))
+	if err != nil {
+		return page, err
+	}
+	end := min(start+matchPageSize, len(d.matches))
+	page.Matches = d.matches[start:end]
+	if end < len(d.matches) {
+		page.NextCursor = cursor(pageKey, end)
 	}
 	return page, s.unchanged(e, f)
 }

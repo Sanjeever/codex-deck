@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ type document struct {
 	issues  []Issue
 	turns   []Turn
 	pending bool
+	matches []Match
 }
 
 func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, int) error, problem func(int, string)) (bool, error) {
@@ -108,17 +110,29 @@ func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, 
 }
 
 func readDocument(ctx context.Context, f *os.File, file string) (*document, error) {
-	return readRollout(ctx, f, file, true)
+	return readRollout(ctx, f, file, true, "")
 }
 
 func readSummary(ctx context.Context, f *os.File, file string) (*document, error) {
-	return readRollout(ctx, f, file, false)
+	return readRollout(ctx, f, file, false, "")
+}
+
+func readMatches(ctx context.Context, f *os.File, file, search string) (*document, error) {
+	return readRollout(ctx, f, file, false, strings.TrimSpace(search))
 }
 
 type toolCall struct {
 	index   int
 	name    string
 	sources int
+	offset  int64
+	turn    int
+	text    string
+}
+
+type indexedMatch struct {
+	Match
+	offset int64
 }
 
 type messageIdentity struct {
@@ -136,13 +150,16 @@ type rolloutBuilder struct {
 	turn         int
 	activeTurnID string
 	lastMessages map[string]messageIdentity
+	search       string
+	matches      map[int64]Match
 }
 
-func newRolloutBuilder(file string, index, userItems bool) *rolloutBuilder {
+func newRolloutBuilder(file string, index, userItems bool, search string) *rolloutBuilder {
 	return &rolloutBuilder{
 		d:    &document{summary: Summary{Models: []string{}}, issues: []Issue{}, events: []indexedEvent{}, turns: []Turn{}},
 		file: file, index: index, userItems: userItems,
 		calls: map[string]toolCall{}, turnIDs: map[string]int{}, lastMessages: map[string]messageIdentity{},
+		search: search, matches: map[int64]Match{},
 	}
 }
 
@@ -152,9 +169,9 @@ func (b *rolloutBuilder) issue(line int, message string) {
 
 // Keep both user-message interpretations only until the first canonical user
 // event. This avoids a second file scan and keeps instruction items out of chat.
-func readRollout(ctx context.Context, f *os.File, file string, index bool) (*document, error) {
-	canonical := newRolloutBuilder(file, index, false)
-	fallback := newRolloutBuilder(file, index, true)
+func readRollout(ctx context.Context, f *os.File, file string, index bool, search string) (*document, error) {
+	canonical := newRolloutBuilder(file, index, false, search)
+	fallback := newRolloutBuilder(file, index, true, search)
 	pending, err := walkRecords(ctx, f, func(r record, ref sourceRef, line int) error {
 		p := object(r.Payload)
 		if p == nil {
@@ -197,7 +214,34 @@ func readRollout(ctx context.Context, f *os.File, file string, index bool) (*doc
 	if !index {
 		b.d.turns = nil
 	}
+	matches := make([]indexedMatch, 0, len(b.matches))
+	for offset, match := range b.matches {
+		matches = append(matches, indexedMatch{match, offset})
+	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].offset < matches[j].offset })
+	b.d.matches = make([]Match, 0, len(matches))
+	for _, match := range matches {
+		b.d.matches = append(b.d.matches, match.Match)
+	}
 	return b.d, nil
+}
+
+func (b *rolloutBuilder) match(offset int64, turn int, name, text string) {
+	if b.search == "" {
+		return
+	}
+	if _, exists := b.matches[offset]; exists {
+		return
+	}
+	index := strings.Index(strings.ToLower(text), strings.ToLower(b.search))
+	if index < 0 && !strings.Contains(strings.ToLower(name), strings.ToLower(b.search)) {
+		return
+	}
+	textOffset := 0
+	if index >= 0 {
+		textOffset = len([]rune(strings.ToLower(text)[:index]))
+	}
+	b.matches[offset] = Match{EventID: "line-" + strconv.FormatInt(offset, 10), Turn: turn, Snippet: excerpt(text, b.search, 180), TextOffset: textOffset}
 }
 
 func (b *rolloutBuilder) consume(r record, p map[string]json.RawMessage, ref sourceRef, line int, kind, name, text, callID, status string, output bool) {
@@ -259,6 +303,10 @@ func (b *rolloutBuilder) consume(r record, p map[string]json.RawMessage, ref sou
 		if ok && call.sources >= 2 && r.Type == "response_item" {
 			b.issue(line, "同一工具调用记录了额外结果，保留为独立事件")
 		} else if ok {
+			if call.sources < 2 && b.search != "" {
+				delete(b.matches, call.offset)
+				b.match(call.offset, call.turn, call.name, call.text+"\n\n"+text)
+			}
 			if b.index {
 				e := &d.events[call.index]
 				if status == "unknown" {
@@ -272,6 +320,7 @@ func (b *rolloutBuilder) consume(r record, p map[string]json.RawMessage, ref sou
 				}
 			}
 			call.sources = 2
+			call.text = ""
 			b.calls[callID] = call
 			return
 		}
@@ -300,12 +349,17 @@ func (b *rolloutBuilder) consume(r record, p map[string]json.RawMessage, ref sou
 	if kind == "tool" && !output {
 		d.summary.ToolCount++
 		if callID != "" {
-			b.calls[callID] = toolCall{index: len(d.events), name: name, sources: 1}
+			call := toolCall{index: len(d.events), name: name, sources: 1, offset: ref.offset, turn: b.turn}
+			if b.search != "" {
+				call.text = text
+			}
+			b.calls[callID] = call
 		}
 	}
 	if kind == "unknown" {
 		b.issue(line, "未支持的事件："+name)
 	}
+	b.match(ref.offset, b.turn, name, text)
 	if b.index {
 		d.events = append(d.events, indexedEvent{Event: Event{ID: id, Turn: b.turn, Kind: kind, Time: timestamp, Name: name, Status: status}, sources: []sourceRef{ref}})
 	}

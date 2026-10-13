@@ -184,6 +184,32 @@ func TestSummaryMatchesDetailWithoutEventIndex(t *testing.T) {
 	}
 }
 
+func TestStreamingMatchesKeepTimelineOrderAndMergedOffsets(t *testing.T) {
+	data := meta("s", "/p") + response("message", map[string]any{"role": "user", "content": "needle instructions"}) + user("实际请求") +
+		response("function_call", map[string]any{"name": "needle_tool", "call_id": "c", "arguments": "参数"}) +
+		response("message", map[string]any{"role": "assistant", "content": "needle reply"}) +
+		response("function_call_output", map[string]any{"call_id": "c", "output": "输出 needle"})
+	d, f := parseFixture(t, data)
+	matches, err := readMatches(context.Background(), f, "rollout-test.jsonl", "needle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches.matches) != 2 || matches.matches[0].EventID != d.events[1].ID || matches.matches[1].EventID != d.events[2].ID {
+		t.Fatalf("streaming search lost source selection or timeline order: %+v", matches.matches)
+	}
+	text, err := eventText(f, d.events[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := matches.matches[0]
+	if !strings.HasPrefix(string([]rune(text)[match.TextOffset:]), "needle") || match.Snippet != excerpt(text, "needle", 180) {
+		t.Fatalf("merged tool match points to a different position: %+v in %q", match, text)
+	}
+	if len(matches.events) != 0 {
+		t.Fatal("search retained a detail event index")
+	}
+}
+
 func BenchmarkRollout(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "rollout.jsonl")
 	data := meta("s", "/p") + user("request")
@@ -209,7 +235,7 @@ func BenchmarkRollout(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := readRollout(context.Background(), f, "rollout.jsonl", index); err != nil {
+				if _, err := readRollout(context.Background(), f, "rollout.jsonl", index, ""); err != nil {
 					b.Fatal(err)
 				}
 			}
