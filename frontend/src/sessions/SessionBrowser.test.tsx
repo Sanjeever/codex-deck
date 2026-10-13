@@ -9,15 +9,15 @@ const summary = (id = 'one'): SessionSummary => ({id, title: `请求 ${id}`, pro
 const listPage = (sessions = [summary()]): SessionListPage => ({sessions, projects: ['/project'], dates: ['2026-10-13'], source: 'D:/isolated/sessions', missing: false, next_cursor: '', issues: []});
 const event = (id = 'e1', text = '用户正文', kind = 'user'): SessionEvent => ({id, turn: 1, kind, text, text_cursor: 0});
 const detailPage = (id = 'one', events = [event()]): SessionReadPage => ({session: summary(id), revision: 'r1', events, turns: [{number: 1, event_id: events[0]?.id ?? 'e1'}, {number: 2, event_id: 'later'}], next_cursor: '', issues: []});
-function Harness({privacy = false}: {privacy?: boolean}) {
-  const browser = useSessionBrowser(true);
-  return <SessionBrowser browser={browser} active safeText={text => privateText(text, privacy, [{email: 'test@example.test', account_id: 'workspace-secret'}])} />;
+function Harness({privacy = false, active = true}: {privacy?: boolean; active?: boolean}) {
+  const browser = useSessionBrowser(active);
+  return <SessionBrowser browser={browser} active={active} safeText={text => privateText(text, privacy, [{email: 'test@example.test', account_id: 'workspace-secret'}])} />;
 }
 const flush = async (ms = 0) => {await act(async () => {await vi.advanceTimersByTimeAsync(ms)})};
-let api: {ListSessions: ReturnType<typeof vi.fn>; ReadSession: ReturnType<typeof vi.fn>; FindSessionMatches: ReturnType<typeof vi.fn>; ReadSessionText: ReturnType<typeof vi.fn>};
+let api: {CancelSessionRequest: ReturnType<typeof vi.fn>; ListSessions: ReturnType<typeof vi.fn>; ReadSession: ReturnType<typeof vi.fn>; FindSessionMatches: ReturnType<typeof vi.fn>; ReadSessionText: ReturnType<typeof vi.fn>};
 beforeEach(() => {
   vi.useFakeTimers();
-  api = {ListSessions: vi.fn(async () => listPage()), ReadSession: vi.fn(async query => detailPage(query.id)), FindSessionMatches: vi.fn(async () => ({matches: [], next_cursor: '', issues: []})), ReadSessionText: vi.fn(async () => ({text: '下一段真实输出', next_offset: 0}))};
+  api = {CancelSessionRequest: vi.fn(async () => {}), ListSessions: vi.fn(async () => listPage()), ReadSession: vi.fn(async query => detailPage(query.id)), FindSessionMatches: vi.fn(async () => ({matches: [], next_cursor: '', issues: []})), ReadSessionText: vi.fn(async () => ({text: '下一段真实输出', next_offset: 0}))};
   vi.stubGlobal('go', {main: {App: api}});
 });
 afterEach(() => {cleanup(); vi.useRealTimers()});
@@ -77,7 +77,7 @@ it('会话内查找和轮次跳转可读取尚未展示的事件及长输出匹�
   fireEvent.change(screen.getByRole('combobox', {name: '跳到对话轮次'}), {target: {value: 'later'}}); await flush();
   expect(api.ReadSession.mock.calls.at(-1)?.[0].event_id).toBe('later');
   fireEvent.change(screen.getByRole('textbox', {name: '查找当前会话'}), {target: {value: 'needle'}}); await flush(300);
-  expect(api.FindSessionMatches).toHaveBeenCalledWith({id: 'one', search: 'needle', cursor: ''});
+  expect(api.FindSessionMatches).toHaveBeenCalledWith(expect.objectContaining({id: 'one', search: 'needle', cursor: ''}));
   fireEvent.click(screen.getByRole('button', {name: '下一个匹配事件'})); await flush();
   expect(api.ReadSessionText).toHaveBeenCalledWith({id: 'one', event_id: 'later', revision: 'r1', offset: 8960});
   expect(screen.getByText('从第 8961 个字符显示')).toBeTruthy();
@@ -116,4 +116,33 @@ it('工具默认折叠、未知状态准确，分段失败可显式重试', asyn
   expect(screen.getByText('下一段真实输出')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name: '折叠工具'})); await flush(); expect(details.open).toBe(false);
   expect(within(screen.getByRole('region', {name: '会话详情'})).queryByText('成功')).toBeNull();
+});
+
+it('切回工作区保留列表和详情，筛选更新期间仍可阅读已有内容', async () => {
+  const {rerender} = render(<Harness />); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  rerender(<Harness active={false} />); await flush();
+  rerender(<Harness />); await flush();
+  expect(api.ListSessions).toHaveBeenCalledTimes(1);
+  expect(api.ReadSession).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('用户正文')).toBeTruthy();
+  let resolveRefresh!: (page: SessionListPage) => void;
+  api.ListSessions.mockImplementationOnce(() => new Promise(resolve => {resolveRefresh = resolve}));
+  fireEvent.change(screen.getByRole('combobox', {name: '按日期筛选'}), {target: {value: '2026-10-13'}}); await flush();
+  expect(screen.getByRole('button', {name: /请求 one/})).toBeTruthy();
+  await act(async () => {resolveRefresh(listPage()); await Promise.resolve()});
+});
+
+it('输入变化和切换工作区会取消仍在执行的后端请求', async () => {
+  api.ListSessions.mockImplementationOnce(() => new Promise(() => {}));
+  const {rerender} = render(<Harness />); await flush();
+  const oldRequest = api.ListSessions.mock.calls[0][0].request_id;
+  fireEvent.change(screen.getByRole('textbox', {name: '搜索全部会话'}), {target: {value: 'needle'}});
+  expect(api.CancelSessionRequest).toHaveBeenCalledWith('list', oldRequest);
+  await flush(300);
+  api.ReadSession.mockImplementationOnce(() => new Promise(() => {}));
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  const detailRequest = api.ReadSession.mock.calls[0][0].request_id;
+  rerender(<Harness active={false} />); await flush();
+  expect(api.CancelSessionRequest).toHaveBeenCalledWith('detail', detailRequest);
 });

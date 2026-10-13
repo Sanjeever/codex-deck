@@ -4,7 +4,7 @@ import type {SessionBrowserController} from './useSessionBrowser';
 
 export function SessionList({browser: b, safeText}: {browser: SessionBrowserController; safeText: (text: string) => string}) {
   const groups = groupBy(b.list?.sessions ?? [], session => localDate(session.updated_at));
-  const query = safeText(b.search);
+  const query = safeText(b.listSearch);
   return <section className="session-browser" aria-label="会话列表">
     <div className="session-browser-controls">
       <TextField aria-label="搜索全部会话" value={b.search} onChange={b.setSearch} className="session-search-field">
@@ -22,7 +22,7 @@ export function SessionList({browser: b, safeText}: {browser: SessionBrowserCont
         <h2>{b.search || b.project || b.date ? '没有匹配的会话' : b.list.missing ? '会话目录不存在' : '暂无可读会话'}</h2>
         {(b.search || b.project || b.date) ? <Button variant="secondary" size="sm" onPress={() => {b.setSearch(''); b.setProject(''); b.setDate('')}}>清除筛选</Button> : <Button variant="secondary" size="sm" onPress={b.refresh}>刷新</Button>}
       </div>}
-      {!b.listLoading && [...groups].map(([date, sessions]) => <section className="session-date-group" key={date}><h2>{date}<span>{sessions.length}</span></h2>
+      {[...groups].map(([date, sessions]) => <section className="session-date-group" key={date}><h2>{date}<span>{sessions.length}</span></h2>
         {sessions.map(session => <button key={session.id} className={`session-list-item ${b.selected?.id === session.id ? 'is-selected' : ''}`} aria-pressed={b.selected?.id === session.id} onClick={() => b.select(session)}>
           <span className="session-item-top"><span className="session-item-project"><Highlight text={safeText(session.project || '项目未知')} query={query} /></span><time>{localTime(session.updated_at)}</time></span>
           <span className="session-item-title"><Highlight text={safeText(session.title || '未记录用户请求')} query={query} /></span>

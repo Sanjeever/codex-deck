@@ -3,7 +3,7 @@ import {Button, Input, Spinner, TextField} from '@heroui/react';
 import {backend, type SessionMatchPage} from '../bridge/api';
 import {groupBy, Highlight, localDate, localTime, ReadIssues} from './SessionText';
 import {TimelineEvent} from './TimelineEvent';
-import {errorText, type SessionBrowserController} from './useSessionBrowser';
+import {errorText, nextSessionRequest, type SessionBrowserController} from './useSessionBrowser';
 
 export function SessionDetail({browser: b, active, safeText}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string}) {
   const [findQuery, setFindQuery] = useState('');
@@ -16,23 +16,27 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
   const heading = useRef<HTMLHeadingElement>(null);
   const id = b.selected?.id ?? '';
   const find = async (append = false) => {
-    const request = ++matchRequest.current;
+    const request = nextSessionRequest(); matchRequest.current = request;
     setFinding(true); setFindError('');
     try {
-      const result = await backend().FindSessionMatches({id, search: findQuery, cursor: append ? matches?.next_cursor ?? '' : ''});
+      const result = await backend().FindSessionMatches({id, search: findQuery, cursor: append ? matches?.next_cursor ?? '' : '', request_id: request});
       if (request !== matchRequest.current) return;
       const combined = append && matches ? {...result, matches: [...matches.matches, ...result.matches]} : result;
       setMatches(combined);
       if (append && result.matches.length) {setMatchIndex(matches?.matches.length ?? 0); b.jump(result.matches[0])}
     } catch (error) {if (request === matchRequest.current) setFindError(errorText(error))}
-    finally {if (request === matchRequest.current) setFinding(false)}
+    finally {if (request === matchRequest.current) {setFinding(false); matchRequest.current = 0}}
   };
   useEffect(() => {
-    ++matchRequest.current; setMatches(null); setMatchIndex(-1); setFindError(''); setFinding(false);
+    matchRequest.current = 0; setMatches(null); setMatchIndex(-1); setFindError(''); setFinding(false);
     if (!id || !findQuery.trim() || !active) return;
     setFinding(true);
     const timer = setTimeout(() => void find(), 300);
-    return () => {clearTimeout(timer); ++matchRequest.current};
+    return () => {
+      clearTimeout(timer);
+      const request = matchRequest.current; matchRequest.current = 0;
+      if (request) void backend().CancelSessionRequest('find', request).catch(error => setFindError(errorText(error)));
+    };
     // Search covers the whole file independently of displayed pages or filters.
   }, [id, findQuery, active, b.refreshVersion]);
   useEffect(() => {setFindQuery(''); setExpanded(false); heading.current?.focus()}, [id]);

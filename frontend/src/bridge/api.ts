@@ -18,8 +18,9 @@ export interface ResetRequest {id: string; credit_id: string; started: boolean; 
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
   ListSessions(query: SessionListQuery): Promise<SessionListPage>;
+  CancelSessionRequest(scope: 'list' | 'detail' | 'find', requestID: number): Promise<void>;
   ReadSession(query: SessionReadQuery): Promise<SessionReadPage>;
-  FindSessionMatches(query: {id: string; search: string; cursor: string}): Promise<SessionMatchPage>;
+  FindSessionMatches(query: {id: string; search: string; cursor: string; request_id?: number}): Promise<SessionMatchPage>;
   ReadSessionText(query: {id: string; event_id: string; revision: string; offset: number}): Promise<SessionTextPage>;
   SaveConfiguration(config: Configuration): Promise<ConfigurationSaveResult>;
   SaveNetwork(config: NetworkConfig): Promise<NetworkConfig>;
@@ -65,9 +66,9 @@ export interface SessionIssue {file: string; line?: number; message: string}
 export interface SessionSummary {id: string; title: string; project: string; created_at?: string; updated_at?: string; models: string[]; turn_count: number; tool_count: number; snippet?: string; match_event_id?: string; match_text_offset?: number}
 export interface SessionEvent {id: string; turn: number; kind: string; time?: string; name?: string; status?: string; text: string; text_cursor: number}
 export interface SessionTurn {number: number; event_id: string}
-export interface SessionListQuery {search: string; project: string; date: string; cursor: string}
+export interface SessionListQuery {search: string; project: string; date: string; cursor: string; request_id?: number}
 export interface SessionListPage {sessions: SessionSummary[]; projects: string[]; dates: string[]; source: string; missing: boolean; next_cursor: string; issues: SessionIssue[]}
-export interface SessionReadQuery {id: string; cursor: string; event_id: string; filter: string}
+export interface SessionReadQuery {id: string; cursor: string; event_id: string; filter: string; request_id?: number}
 export interface SessionReadPage {session: SessionSummary; revision: string; turns: SessionTurn[]; events: SessionEvent[]; next_cursor: string; issues: SessionIssue[]}
 export interface SessionMatch {event_id: string; turn: number; snippet: string; text_offset: number}
 export interface SessionMatchPage {matches: SessionMatch[]; next_cursor: string; issues: SessionIssue[]}
