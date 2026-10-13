@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"codex-deck/internal/deck"
+	"codex-deck/internal/sessions"
 	"codex-deck/internal/update"
 	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -29,6 +30,7 @@ type App struct {
 	ctx                context.Context
 	ready              chan struct{}
 	service            *deck.Service
+	sessions           *sessions.Service
 	err                error
 	cancel             context.CancelFunc
 }
@@ -47,6 +49,7 @@ func (a *App) startup(ctx context.Context) {
 	if cliHome == "" {
 		cliHome = filepath.Join(home, ".codex")
 	}
+	a.sessions = sessions.NewService(ctx, cliHome)
 	a.service, a.err = deck.NewService(ctx, filepath.Join(home, ".codex-deck.json"), cliHome)
 	if a.err == nil {
 		a.service.SetNotifier(a.notifyLowQuota)

@@ -17,6 +17,10 @@ export interface AuthImportPreview extends PreviewAccount {id: string; existing:
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  ListSessions(query: SessionListQuery): Promise<SessionListPage>;
+  ReadSession(query: SessionReadQuery): Promise<SessionReadPage>;
+  FindSessionMatches(query: {id: string; search: string; cursor: string}): Promise<SessionMatchPage>;
+  ReadSessionText(query: {id: string; event_id: string; revision: string; offset: number}): Promise<SessionTextPage>;
   SaveConfiguration(config: Configuration): Promise<ConfigurationSaveResult>;
   SaveNetwork(config: NetworkConfig): Promise<NetworkConfig>;
   TestNetwork(config: NetworkConfig): Promise<void>;
@@ -56,3 +60,15 @@ export function backend(): Backend {
   if (!window.go?.main?.App) throw new Error('请通过 Wails 启动程序');
   return window.go.main.App;
 }
+
+export interface SessionIssue {file: string; line?: number; message: string}
+export interface SessionSummary {id: string; title: string; project: string; created_at?: string; updated_at?: string; models: string[]; turn_count: number; tool_count: number; snippet?: string; match_event_id?: string}
+export interface SessionEvent {id: string; turn: number; kind: string; time?: string; name?: string; status?: string; text: string; text_cursor: number}
+export interface SessionTurn {number: number; event_id: string}
+export interface SessionListQuery {search: string; project: string; date: string; cursor: string}
+export interface SessionListPage {sessions: SessionSummary[]; projects: string[]; dates: string[]; source: string; missing: boolean; next_cursor: string; issues: SessionIssue[]}
+export interface SessionReadQuery {id: string; cursor: string; event_id: string; filter: string}
+export interface SessionReadPage {session: SessionSummary; revision: string; turns: SessionTurn[]; events: SessionEvent[]; next_cursor: string; issues: SessionIssue[]}
+export interface SessionMatch {event_id: string; turn: number; snippet: string; text_offset: number}
+export interface SessionMatchPage {matches: SessionMatch[]; next_cursor: string; issues: SessionIssue[]}
+export interface SessionTextPage {text: string; next_offset: number}
