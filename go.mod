@@ -14,6 +14,9 @@ require (
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/net v0.35.0
 	golang.org/x/oauth2 v0.25.0
+	golang.org/x/sys v0.30.0
+	gopkg.in/ini.v1 v1.67.0
+	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
 
 require (
@@ -39,6 +42,5 @@ require (
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )

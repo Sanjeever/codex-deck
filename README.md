@@ -84,6 +84,8 @@ Go 后端统一调度，用量按 5 分钟间隔后台更新。窗口隐藏、�
 
 Linux 需要桌面提供托盘宿主，部分 GNOME 环境需要安装 AppIndicator 扩展。托盘初始化或注册失败时界面明确提示，保留主窗口，此时关闭窗口会退出应用，避免隐藏后失去操作入口。
 
+自启动注册由独立 Go 方法管理，仅作用于当前用户。Windows 使用 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 中的 `Codex Deck` 项，macOS 使用 `~/Library/LaunchAgents/com.wails.codex-deck.autostart.plist`，Linux 使用 `$XDG_CONFIG_HOME/autostart/codex-deck.desktop`，未设置该变量时使用 `~/.config/autostart`。注册项是系统集成文件，不写入应用 JSON 或 WebDAV 备份，恢复备份不改变本设备自启动状态。
+
 | 快捷键 | 操作 |
 | --- | --- |
 | `⌘/Ctrl + R` | 刷新 |
