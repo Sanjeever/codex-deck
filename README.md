@@ -24,6 +24,8 @@ Codex Deck 是管理 Codex CLI 多账号、套餐额度和重置卡的桌面应�
 
 主窗口采用账号表格，设置通过对话框打开，主题跟随系统。所有业务 HTTP 请求由 Go 发起，前端通过 Wails 调用后端。
 
+前端源码按职责组织。`frontend/src/app` 管理应用状态与调度，`accounts` 保存账号展示与表格，`dialogs` 保存设置与操作对话框，`notifications` 管理消息，`bridge` 定义 Wails 接口，`test` 保存共享测试配置与数据。测试文件与对应模块放在一起。
+
 ## 开发与构建
 
 开发环境使用 Go 1.23、Node.js 26、pnpm 11.20.0 和 Wails CLI v2.12.0。macOS 需要 Xcode Command Line Tools，其他平台依赖见 [Wails 安装文档](https://wails.io/docs/gettingstarted/installation/)。

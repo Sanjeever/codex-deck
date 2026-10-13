@@ -1,4 +1,4 @@
-import type {Account, PreviewAccount} from './api';
+import type {Account, PreviewAccount} from '../bridge/api';
 
 export function privateText(text: string, privacy: boolean, accounts: Pick<Account, 'email' | 'account_id'>[]) {
   if (!privacy) return text;

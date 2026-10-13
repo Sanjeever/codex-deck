@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {backend} from './api';
+import {backend} from '../bridge/api';
 
 export function useAutoRefresh(enabled: boolean, paused: boolean) {
   const [error, setError] = useState('');

@@ -1,7 +1,7 @@
 import {useEffect, useRef} from 'react';
 import {Toast, toast} from '@heroui/react';
-import type {State} from './api';
-import {privateText} from './accounts';
+import type {State} from '../bridge/api';
+import {privateText} from '../accounts/accounts';
 
 type NoticeKind = 'success' | 'info' | 'error';
 

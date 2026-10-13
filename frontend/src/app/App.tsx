@@ -1,10 +1,10 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, Switch, TextField} from '@heroui/react';
-import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from './api';
-import {accountName as displayAccountName, privateText, usageStale, visibleAccounts, workspaceName} from './accounts';
+import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from '../bridge/api';
+import {accountName as displayAccountName, privateText, usageStale, visibleAccounts, workspaceName} from '../accounts/accounts';
 import {useKeyboardShortcuts} from './useKeyboardShortcuts';
 import {useAutoRefresh} from './useAutoRefresh';
-import {Notifications, notify} from './Notifications';
+import {Notifications, notify} from '../notifications/Notifications';
 
 type Dialog = {kind: 'settings'} | {kind: 'overwrite'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
 

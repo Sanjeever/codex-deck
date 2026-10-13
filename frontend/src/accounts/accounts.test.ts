@@ -1,6 +1,6 @@
 import {expect, it} from 'vitest';
 import {accountName, privateText, usageStale, visibleAccounts} from './accounts';
-import type {Account} from './api';
+import type {Account} from '../bridge/api';
 
 const now = Date.now();
 const account = (id: string, quota: number | null, age = 0): Account => ({id, account_id: `workspace-${id}`, email: `${id}@example.test`, alias: '', plan: 'plus', current: false, auth_error: '', usage_error: '', credits_error: '', credits: null, pending_reset: null, usage: quota == null ? null : {plan: 'plus', five_hour: {remaining_percent: quota, reset_at: null}, weekly: null, reset_credits: null, queried_at: new Date(now - age).toISOString()}});

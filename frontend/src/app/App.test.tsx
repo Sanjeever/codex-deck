@@ -1,7 +1,7 @@
 import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import App from './App';
-import type {State} from './api';
+import type {State} from '../bridge/api';
 import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
