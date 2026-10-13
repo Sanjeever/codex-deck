@@ -13,6 +13,7 @@ import (
 )
 
 type Service struct {
+	authImport          *pendingAuthImport
 	generation          uint64
 	mu                  sync.Mutex
 	refreshMu           sync.Mutex

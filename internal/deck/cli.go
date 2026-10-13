@@ -93,8 +93,12 @@ func (c CLI) Read() (*cliAuth, Identity, error) {
 	if err != nil {
 		return nil, Identity{}, err
 	}
+	return decodeCLIAuth(b)
+}
+
+func decodeCLIAuth(b []byte) (*cliAuth, Identity, error) {
 	var auth cliAuth
-	if err = json.Unmarshal(b, &auth); err != nil {
+	if err := json.Unmarshal(b, &auth); err != nil {
 		return nil, Identity{}, fmt.Errorf("CLI 认证文件格式无效: %w", err)
 	}
 	if auth.AuthMode != "" && auth.AuthMode != "chatgpt" {
@@ -121,12 +125,19 @@ func (c CLI) Write(t Tokens) error {
 	if mode != "file" {
 		return fmt.Errorf("CLI 当前使用 %s 凭据存储，请确认改为文件存储", mode)
 	}
-	a := cliAuth{AuthMode: "chatgpt", Tokens: &cliTokens{IDToken: t.IDToken, AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, AccountID: t.AccountID}, LastRefresh: &t.LastRefresh}
-	b, err := json.MarshalIndent(a, "", "  ")
+	b, err := encodeCLIAuth(t)
 	if err != nil {
 		return err
 	}
 	return atomicWrite(filepath.Join(c.Home, "auth.json"), b)
+}
+
+func encodeCLIAuth(t Tokens) ([]byte, error) {
+	auth := cliAuth{AuthMode: "chatgpt", Tokens: &cliTokens{IDToken: t.IDToken, AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, AccountID: t.AccountID}}
+	if !t.LastRefresh.IsZero() {
+		auth.LastRefresh = &t.LastRefresh
+	}
+	return json.MarshalIndent(auth, "", "  ")
 }
 
 func (c CLI) ReadAccount() (*Account, error) {
