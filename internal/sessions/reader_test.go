@@ -210,6 +210,22 @@ func TestStreamingMatchesKeepTimelineOrderAndMergedOffsets(t *testing.T) {
 	}
 }
 
+func TestSummaryProjectionPreservesSourceSelectionAndIssues(t *testing.T) {
+	for _, data := range []string{
+		meta("s", "/p") + response("message", map[string]any{"role": "user", "content": "fallback"}) + user("actual"),
+		meta("s", "/p") + response("message", map[string]any{"role": "user", "content": "only source"}),
+		meta("s", "/p") + row("event_msg", map[string]any{"type": "item_completed", "turn_id": "t", "item": map[string]any{"type": "UserMessage", "id": "u", "content": "request"}}) + row("event_msg", map[string]any{"type": "item_completed", "item": map[string]any{"type": "CommandExecution", "id": "c", "aggregated_output": strings.Repeat("output", 10000)}}),
+		meta("s", "/p") + user("request") + row("future_record", map[string]any{"message": "unknown"}) + row("event_msg", []int{1}) + "{broken}\n" + `{"payload":`,
+		meta("s", "/p") + row("event_msg", map[string]any{"type": "item_completed", "item": []int{1}}),
+	} {
+		detail, file := parseFixture(t, data)
+		summary, err := readSummary(context.Background(), file, "rollout-test.jsonl")
+		if err != nil || !reflect.DeepEqual(detail.summary, summary.summary) || !reflect.DeepEqual(detail.issues, summary.issues) {
+			t.Fatalf("summary projection changed recorded behavior: %+v %v", summary, err)
+		}
+	}
+}
+
 func BenchmarkRollout(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "rollout.jsonl")
 	data := meta("s", "/p") + user("request")

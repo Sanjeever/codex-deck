@@ -27,6 +27,7 @@ type record struct {
 	Timestamp string          `json:"timestamp"`
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
+	fields    map[string]json.RawMessage
 }
 
 type sourceRef struct {
@@ -46,7 +47,7 @@ type document struct {
 	matches []Match
 }
 
-func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, int) error, problem func(int, string)) (bool, error) {
+func walkRecords(ctx context.Context, f *os.File, summary bool, visit func(record, sourceRef, int) error, problem func(int, string)) (bool, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return false, err
 	}
@@ -90,14 +91,19 @@ func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, 
 			problem(line, "记录超过 16 MiB 读取上限，该行未参与展示或搜索")
 		} else if len(bytes.TrimSpace(data)) > 0 {
 			var entry record
-			decodeErr := json.Unmarshal(data, &entry)
+			var decodeErr error
+			if summary {
+				entry, decodeErr = decodeSummaryRecord(data)
+			} else {
+				decodeErr = json.Unmarshal(data, &entry)
+			}
 			if decodeErr != nil {
 				// An unfinished JSON value at EOF is a live writer's pending record.
 				if errors.Is(err, io.EOF) && !bytes.HasSuffix(data, []byte{'\n'}) && strings.Contains(decodeErr.Error(), "unexpected end") {
 					return true, nil
 				}
 				problem(line, "JSON 记录损坏")
-			} else if entry.Type == "" || len(entry.Payload) == 0 || bytes.Equal(entry.Payload, []byte("null")) {
+			} else if entry.Type == "" || (entry.fields == nil && (len(entry.Payload) == 0 || bytes.Equal(entry.Payload, []byte("null")))) {
 				problem(line, "记录缺少 type 或 payload")
 			} else if visitErr := visit(entry, sourceRef{start, len(data)}, line); visitErr != nil {
 				return false, visitErr
@@ -172,8 +178,11 @@ func (b *rolloutBuilder) issue(line int, message string) {
 func readRollout(ctx context.Context, f *os.File, file string, index bool, search string) (*document, error) {
 	canonical := newRolloutBuilder(file, index, false, search)
 	fallback := newRolloutBuilder(file, index, true, search)
-	pending, err := walkRecords(ctx, f, func(r record, ref sourceRef, line int) error {
-		p := object(r.Payload)
+	pending, err := walkRecords(ctx, f, !index && search == "", func(r record, ref sourceRef, line int) error {
+		p := r.fields
+		if p == nil {
+			p = object(r.Payload)
+		}
 		if p == nil {
 			canonical.issue(line, "payload 必须是对象")
 			if fallback != nil {
