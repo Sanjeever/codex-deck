@@ -2,6 +2,13 @@ import type {Account, PreviewAccount} from '../bridge/api';
 
 export function dateTime(value: string | null | undefined) {return value ? new Date(value).toLocaleString('zh-CN', {hour12: false}) : '未知'}
 
+export function creditCount(a: Account) {
+  if (a.usage?.reset_credits != null && (!a.credits || new Date(a.usage.queried_at) >= new Date(a.credits.queried_at))) return a.usage.reset_credits;
+  return a.credits?.available_count ?? a.usage?.reset_credits ?? null;
+}
+
+export function pendingConsumption(a: Account) {return !!a.pending_reset?.started && !a.pending_reset.result}
+
 export function privateText(text: string, privacy: boolean, accounts: Pick<Account, 'email' | 'account_id'>[]) {
   if (!privacy) return text;
   let result = text.replace(/[\w.+-]+@[\w.-]+/g, '••••@••••');

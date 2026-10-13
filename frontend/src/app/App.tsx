@@ -1,34 +1,17 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
-import {Button, Dropdown, Input, Meter, Modal, Spinner, TextField} from '@heroui/react';
-import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type State} from '../bridge/api';
-import {accountName as displayAccountName, dateTime, privateText, usageStale, visibleAccounts, workspaceName} from '../accounts/accounts';
+import {Button, Modal, Spinner} from '@heroui/react';
+import {backend, type Account, type ResetRequest, type RestorePreview, type State} from '../bridge/api';
+import {accountName as displayAccountName, creditCount, dateTime, pendingConsumption, privateText, workspaceName} from '../accounts/accounts';
 import {useKeyboardShortcuts} from './useKeyboardShortcuts';
 import {useAutoRefresh} from './useAutoRefresh';
 import {Notifications, notify} from '../notifications/Notifications';
 import {Field} from '../dialogs/DialogFrame';
 import {SettingsDialog} from '../dialogs/SettingsDialog';
+import {AccountTable} from '../accounts/AccountTable';
 
 type Dialog = {kind: 'settings'} | {kind: 'overwrite'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
 
 function errorText(error: unknown) {return error instanceof Error ? error.message : String(error)}
-function creditCount(a: Account) {
-  if (a.usage?.reset_credits != null && (!a.credits || new Date(a.usage.queried_at) >= new Date(a.credits.queried_at))) return a.usage.reset_credits;
-  return a.credits?.available_count ?? a.usage?.reset_credits ?? null;
-}
-function pendingConsumption(a: Account) {return !!a.pending_reset?.started && !a.pending_reset.result}
-
-function Quota({label, value}: {label: string; value: QuotaWindow | null | undefined}) {
-  if (!value) return <span className="text-muted">未知</span>;
-  const percent = Math.round(value.remaining_percent * 10) / 10;
-  return <div className="quota">
-    <Meter aria-label={`${label} 剩余`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
-      <Meter.Output className="tabular-nums text-sm">剩余 {percent}%</Meter.Output>
-      <Meter.Track className="h-1"><Meter.Fill className={percent < 15 ? 'quota-low' : ''} /></Meter.Track>
-    </Meter>
-    <p className="mt-2 text-xs text-muted" title={dateTime(value.reset_at)}>{value.reset_at ? `${new Date(value.reset_at).toLocaleString('zh-CN', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false})} 恢复` : '恢复时间未知'}</p>
-  </div>;
-}
-
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -113,6 +96,7 @@ export default function App() {
       case 'login': void login(account.id); break;
       case 'refresh': void run('正在刷新', () => backend().RefreshAccount(account.id)); break;
       case 'credits': showCredits(account); break;
+      case 'switch': switchAccount(account); break;
       case 'consume': useCredit(account); break;
     }
   };
@@ -189,31 +173,7 @@ export default function App() {
     </div>}
     {!state && !busy && (loadError || automatic.error) && <div className="empty-state flex-col gap-4"><p role="alert" className="max-w-lg text-sm text-danger break-all">{safeText(loadError || automatic.error)}</p><Button variant="secondary" onPress={() => void load()}>重试加载</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
-    {state && state.accounts.length > 0 && <div className="account-toolbar">
-      <TextField value={query} onChange={setQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" /></TextField>
-      <Dropdown><Dropdown.Trigger isDisabled={!!busy} className="sort-trigger">{({name: '账号名称', quota: '剩余额度'} as Record<string, string>)[state.preferences.sort] || '默认排序'} ▾</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="账号排序" onAction={key => void run('正在保存', () => backend().SavePreferences({...state.preferences, sort: String(key) === 'default' ? '' : String(key)}))}><Dropdown.Item id="default">默认排序</Dropdown.Item><Dropdown.Item id="name">账号名称</Dropdown.Item><Dropdown.Item id="quota">剩余额度</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
-    </div>}
-    {state && state.accounts.length > 0 && visibleAccounts(state.accounts, query, state.preferences.sort).length === 0 && <p className="py-12 text-center text-muted">没有匹配账号</p>}
-    {state && state.accounts.length === 0 ? <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={() => void login()}>添加账号</Button></div> : state && <div className="table-scroll"><table aria-label="Codex 账号">
-      <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
-      <tbody>{visibleAccounts(state.accounts, query, state.preferences.sort).map(account => <tr key={account.id} className={usageStale(account) ? 'usage-stale' : undefined}>
-        <td className="account-cell"><div className="flex items-center gap-2"><span className="font-medium break-all">{accountName(account)}</span>{account.current && <span className="current-tag">当前</span>}</div>
-          {account.alias && account.email && <p className="mt-1 text-xs text-muted break-all">{emailName(account.email)}</p>}
-          <p className="mt-1 text-xs text-muted" title={workspaceName(account.account_id, privacy)}>工作区 {workspaceName(account.account_id, privacy).slice(0, 12)}</p>
-          {account.auth_error && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => void login(account.id)}><span title={safeText(account.auth_error)}>需重新登录</span></Button>}
-          {account.usage_error && <p className="row-error" title={safeText(account.usage_error)}>用量查询失败</p>}
-          {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{usageStale(account) ? '已过期' : account.usage_error ? '缓存' : '更新'} {new Date(account.usage.queried_at).toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', hour12: false})}</p>}
-        </td>
-        <td><span className="plan-name">{account.plan || '未知'}</span></td>
-        <td><Quota label="5H" value={account.usage?.five_hour} /></td><td><Quota label="Weekly" value={account.usage?.weekly} /></td>
-        <td><Button size="sm" variant="ghost" className="px-0" isDisabled={!!busy} onPress={() => showCredits(account)}>{creditCount(account) == null ? '未知' : `${creditCount(account)} 张`}</Button></td>
-        <td><div className="flex justify-end items-center gap-2">{!account.current && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => switchAccount(account)}>切换</Button>}
-          <Dropdown><Dropdown.Trigger aria-label={`${accountName(account)} 操作`} isDisabled={!!busy} className="row-menu">···</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="账号操作" onAction={key => menu(String(key), account)}>
-            <Dropdown.Item id="alias">编辑别名</Dropdown.Item><Dropdown.Item id="login">重新登录</Dropdown.Item><Dropdown.Item id="refresh">刷新用量</Dropdown.Item><Dropdown.Item id="credits">重置卡详情</Dropdown.Item><Dropdown.Item id="consume" isDisabled={creditCount(account) === 0 && !pendingConsumption(account)}>{pendingConsumption(account) ? '重试重置卡' : '使用重置卡'}</Dropdown.Item><Dropdown.Item id="delete" variant="danger" isDisabled={account.current}>删除</Dropdown.Item>
-          </Dropdown.Menu></Dropdown.Popover></Dropdown>
-        </div></td>
-      </tr>)}</tbody>
-    </table></div>}
+    {state && <AccountTable accounts={state.accounts} privacy={privacy} busy={busy} query={query} sort={state.preferences.sort} searchRef={searchRef} onQuery={setQuery} onSort={sort => void run('正在保存', () => backend().SavePreferences({...state.preferences, sort}))} onAction={menu} onAdd={() => void login()} />}
     <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void close()}} isDismissable={!busy} isKeyboardDismissDisabled={!!busy && dialog?.kind !== 'login'}>
       {dialog?.kind === 'settings' && state ? <SettingsDialog state={state} busy={busy} run={run} safeText={safeText} onClose={close} onOverwrite={() => setDialog({kind: 'overwrite'})} onRestore={preview => setDialog({kind: 'restore', preview})} /> : <Modal.Container size={dialog?.kind === 'credits' ? 'lg' : 'sm'} placement="center"><Modal.Dialog>
         <Modal.Header><Modal.Heading>{title}</Modal.Heading></Modal.Header>
