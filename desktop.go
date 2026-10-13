@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	systemruntime "runtime"
 
 	"codex-deck/internal/deck"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -11,14 +12,36 @@ import (
 
 func (a *App) activate(_ options.SecondInstanceData) {
 	<-a.ready
-	runtime.WindowUnminimise(a.ctx)
-	runtime.WindowShow(a.ctx)
+	a.showWindow()
+}
+
+func (a *App) showWindow() {
+	if systemruntime.GOOS == "darwin" {
+		runtime.WindowUnminimise(a.ctx)
+		runtime.Show(a.ctx)
+	} else {
+		runtime.WindowShow(a.ctx)
+	}
+}
+
+func (a *App) quit() {
+	a.desktopMu.Lock()
+	a.quitting = true
+	a.desktopMu.Unlock()
+	runtime.Quit(a.ctx)
 }
 
 func (a *App) domReady(ctx context.Context) {
 	s, err := a.backend()
 	if err != nil {
 		return
+	}
+	stop, trayErr := a.startTray()
+	a.desktopMu.Lock()
+	a.stopTray, a.trayReady = stop, trayErr == nil
+	a.desktopMu.Unlock()
+	if trayErr != nil {
+		s.SetDesktopError(fmt.Errorf("托盘不可用，关闭窗口将退出应用: %w", trayErr))
 	}
 	s.StartAutomatic()
 	if s.GetState().Preferences.LowQuotaNotify {
@@ -55,16 +78,24 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	if !runtime.WindowIsNormal(ctx) {
-		return false
+	if runtime.WindowIsNormal(ctx) {
+		width, height := runtime.WindowGetSize(ctx)
+		x, y := runtime.WindowGetPosition(ctx)
+		if err := s.SaveWindow(deck.WindowState{Width: width, Height: height, X: x, Y: y}); err != nil {
+			s.SetDesktopError(fmt.Errorf("保存窗口状态失败: %w", err))
+			a.desktopMu.Lock()
+			a.quitting = false
+			a.desktopMu.Unlock()
+			return true
+		}
 	}
-	width, height := runtime.WindowGetSize(ctx)
-	x, y := runtime.WindowGetPosition(ctx)
-	if err := s.SaveWindow(deck.WindowState{Width: width, Height: height, X: x, Y: y}); err != nil {
-		s.SetDesktopError(fmt.Errorf("保存窗口状态失败: %w", err))
-		return true
+	a.desktopMu.Lock()
+	hide := a.trayReady && !a.quitting
+	a.desktopMu.Unlock()
+	if hide {
+		runtime.Hide(ctx)
 	}
-	return false
+	return hide
 }
 
 func (a *App) initialiseNotifications() error {

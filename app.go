@@ -13,6 +13,10 @@ import (
 )
 
 type App struct {
+	desktopMu          sync.Mutex
+	stopTray           func()
+	trayReady          bool
+	quitting           bool
 	notificationMu     sync.Mutex
 	notificationsReady bool
 	ctx                context.Context
@@ -54,6 +58,12 @@ func (a *App) shutdown(ctx context.Context) {
 		if a.notificationsReady {
 			runtime.CleanupNotifications(a.ctx)
 		}
+	}
+	a.desktopMu.Lock()
+	stopTray := a.stopTray
+	a.desktopMu.Unlock()
+	if stopTray != nil {
+		stopTray()
 	}
 }
 
