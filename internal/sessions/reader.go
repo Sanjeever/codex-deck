@@ -141,7 +141,7 @@ func readDocument(ctx context.Context, f *os.File, file string) (*document, erro
 		if r.Timestamp != "" && timestamp == "" {
 			issue(line, "记录时间格式不可识别")
 		}
-		if timestamp > d.summary.UpdatedAt {
+		if newer(timestamp, d.summary.UpdatedAt) {
 			d.summary.UpdatedAt = timestamp
 		}
 		switch r.Type {
@@ -172,6 +172,11 @@ func readDocument(ctx context.Context, f *os.File, file string) (*document, erro
 		if r.Type == "event_msg" {
 			if id := str(p, "turn_id"); id != "" {
 				activeTurnID = id
+			}
+		}
+		if r.Type == "event_msg" && str(p, "type") == "item_completed" && kind == "tool" && callID != "" {
+			if _, exists := calls[callID]; exists {
+				output = true
 			}
 		}
 		if kind == "user" || kind == "assistant" {
