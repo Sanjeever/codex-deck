@@ -11,3 +11,13 @@ it('快捷键调用对应操作，弹窗期间停用，输入框不触发添加�
  fireEvent.keyDown(input, {key: 'n', ctrlKey: true}); expect(actions.login).toHaveBeenCalledTimes(1); input.remove();
  act(() => rerender({enabled: false})); fireEvent.keyDown(window, {key: 'r', ctrlKey: true}); expect(actions.refresh).toHaveBeenCalledTimes(1);
 });
+
+it('重新渲染后快捷键使用最新操作', () => {
+ const actions = {refresh: vi.fn(), settings: vi.fn(), login: vi.fn(), search: vi.fn()};
+ const next = {...actions, refresh: vi.fn()};
+ const {rerender} = renderHook(({actions}) => useKeyboardShortcuts(true, actions), {initialProps: {actions}});
+ act(() => rerender({actions: next}));
+ fireEvent.keyDown(window, {key: 'r', ctrlKey: true});
+ expect(actions.refresh).not.toHaveBeenCalled();
+ expect(next.refresh).toHaveBeenCalledTimes(1);
+});
