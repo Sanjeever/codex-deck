@@ -1,5 +1,7 @@
 import type {Account, PreviewAccount} from '../bridge/api';
 
+export function dateTime(value: string | null | undefined) {return value ? new Date(value).toLocaleString('zh-CN', {hour12: false}) : '未知'}
+
 export function privateText(text: string, privacy: boolean, accounts: Pick<Account, 'email' | 'account_id'>[]) {
   if (!privacy) return text;
   let result = text.replace(/[\w.+-]+@[\w.-]+/g, '••••@••••');

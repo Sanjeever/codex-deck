@@ -1,15 +1,16 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
-import {Button, Dropdown, Input, Label, Meter, Modal, Spinner, Switch, TextField} from '@heroui/react';
-import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type Settings, type State} from '../bridge/api';
-import {accountName as displayAccountName, privateText, usageStale, visibleAccounts, workspaceName} from '../accounts/accounts';
+import {Button, Dropdown, Input, Meter, Modal, Spinner, TextField} from '@heroui/react';
+import {backend, type Account, type QuotaWindow, type ResetRequest, type RestorePreview, type State} from '../bridge/api';
+import {accountName as displayAccountName, dateTime, privateText, usageStale, visibleAccounts, workspaceName} from '../accounts/accounts';
 import {useKeyboardShortcuts} from './useKeyboardShortcuts';
 import {useAutoRefresh} from './useAutoRefresh';
 import {Notifications, notify} from '../notifications/Notifications';
+import {Field} from '../dialogs/DialogFrame';
+import {SettingsDialog} from '../dialogs/SettingsDialog';
 
 type Dialog = {kind: 'settings'} | {kind: 'overwrite'} | {kind: 'login'; id: string} | {kind: 'alias' | 'delete' | 'switch' | 'credits'; account: Account} | {kind: 'consume'; account: Account; request: ResetRequest} | {kind: 'restore'; preview: RestorePreview};
 
 function errorText(error: unknown) {return error instanceof Error ? error.message : String(error)}
-function dateTime(value: string | null | undefined) {return value ? new Date(value).toLocaleString('zh-CN', {hour12: false}) : '未知'}
 function creditCount(a: Account) {
   if (a.usage?.reset_credits != null && (!a.credits || new Date(a.usage.queried_at) >= new Date(a.credits.queried_at))) return a.usage.reset_credits;
   return a.credits?.available_count ?? a.usage?.reset_credits ?? null;
@@ -28,20 +29,12 @@ function Quota({label, value}: {label: string; value: QuotaWindow | null | undef
   </div>;
 }
 
-function Field({label, value, onChange, type = 'text', disabled = false}: {label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'password' | 'url'; disabled?: boolean}) {
-  return <TextField value={value} onChange={onChange} isDisabled={disabled} className="w-full">
-    <Label>{label}</Label><Input type={type} autoComplete="off" spellCheck={false} />
-  </TextField>;
-}
-
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busy, setBusy] = useState('');
   const busyRef = useRef(false);
   const [loadError, setLoadError] = useState('');
-  const [settings, setSettings] = useState<Settings>({webdav_url: '', webdav_username: '', webdav_password: ''});
-  const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const privacy = state?.preferences.privacy ?? false;
@@ -124,13 +117,7 @@ export default function App() {
     }
   };
 
-  const readAutoStart = () => void run('正在读取自启动设置', () => backend().GetAutoStart(), setAutoStart);
-  const openSettings = () => {
-    if (state) {
-      setSettings({...state.settings}); setAutoStart(null); setDialog({kind: 'settings'});
-      readAutoStart();
-    }
-  };
+  const openSettings = () => {if (state) setDialog({kind: 'settings'})};
   useKeyboardShortcuts(!!state && !busy && !dialog, {
     refresh: () => void run('正在刷新', () => backend().RefreshAll(), setState),
     settings: openSettings, login: () => void login(), search: () => searchRef.current?.focus(),
@@ -146,33 +133,7 @@ export default function App() {
     switch (dialog.kind) {
       case 'login':
         title = '浏览器登录'; body = <div className="flex items-center gap-3 py-5"><Spinner size="sm" /><span>等待浏览器授权</span></div>; break;
-      case 'settings':
-        title = '设置';
-        body = <div className="space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <Switch isSelected={autoStart === true} isDisabled={!!busy || autoStart === null} onChange={value => void run('正在修改自启动设置', () => backend().SetAutoStart(value), enabled => {setAutoStart(enabled); notify('success', enabled ? '已开启开机自启动' : '已关闭开机自启动')})}>
-              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>开机自启动</Label></Switch.Content>
-            </Switch>
-            {autoStart === null && !busy && <Button variant="ghost" size="sm" onPress={readAutoStart}>重试读取</Button>}
-          </div>
-          {state && <div className="flex items-center justify-between gap-4">
-            <Switch isSelected={state.preferences.low_quota_notify} isDisabled={!!busy} onChange={value => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_notify: value}))}>
-              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>低额度通知</Label></Switch.Content>
-            </Switch>
-            <Dropdown><Dropdown.Trigger isDisabled={!!busy || !state.preferences.low_quota_notify} className="sort-trigger" aria-label="通知阈值">{state.preferences.low_quota_threshold || 10}% ▾</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="通知阈值" onAction={key => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_threshold: Number(key)}))}>{[5, 10, 20].map(value => <Dropdown.Item key={value} id={String(value)}>{value}%</Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover></Dropdown>
-          </div>}
-          <Field label="WebDAV 目录地址" type="url" value={settings.webdav_url} onChange={value => setSettings({...settings, webdav_url: value})} disabled={!!busy} />
-          <Field label="用户名" type={privacy ? 'password' : 'text'} value={settings.webdav_username} onChange={value => setSettings({...settings, webdav_username: value})} disabled={!!busy} />
-          <Field label="密码" type="password" value={settings.webdav_password} onChange={value => setSettings({...settings, webdav_password: value})} disabled={!!busy} />
-          {state?.backup.busy && <p role="status" className="text-xs text-muted">正在备份</p>}
-          {state?.backup.error ? <p className="text-xs text-danger" title={safeText(state.backup.error)}>{state.backup.conflict ? '备份冲突' : '备份失败'}</p> : state?.backup.at && <p className="text-xs text-muted">上次备份 · {dateTime(state.backup.at)}</p>}
-          <div className="flex gap-2 pt-1">
-            {state?.backup.conflict && <Button variant="danger" size="sm" isDisabled={!!busy || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => setDialog({kind: 'overwrite'})}>覆盖远端</Button>}
-            <Button variant="secondary" size="sm" isDisabled={!!busy || !state?.settings.webdav_url || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => void run('正在备份', () => backend().Backup(), () => notify('success', '备份成功'))}>备份</Button>
-            <Button variant="secondary" size="sm" isDisabled={!!busy || !state?.settings.webdav_url || JSON.stringify(settings) !== JSON.stringify(state.settings)} onPress={() => void run('正在下载备份', () => backend().PrepareRestore(), preview => setDialog({kind: 'restore', preview}))}>恢复</Button>
-          </div>
-        </div>;
-        actions = <Button isDisabled={!!busy} onPress={() => void run('正在保存设置', () => backend().SaveSettings(settings), () => notify('success', '设置已保存'))}>保存</Button>; break;
+      case 'settings': break;
       case 'alias':
         title = '编辑别名'; body = <Field label="别名" value={alias} onChange={setAlias} disabled={!!busy} />;
         actions = <Button isDisabled={!!busy} onPress={() => void run('正在保存', () => backend().Rename(dialog.account.id, alias), () => success('别名已保存'))}>保存</Button>; break;
@@ -254,11 +215,11 @@ export default function App() {
       </tr>)}</tbody>
     </table></div>}
     <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void close()}} isDismissable={!busy} isKeyboardDismissDisabled={!!busy && dialog?.kind !== 'login'}>
-      <Modal.Container size={dialog?.kind === 'credits' ? 'lg' : 'sm'} placement="center"><Modal.Dialog>
+      {dialog?.kind === 'settings' && state ? <SettingsDialog state={state} busy={busy} run={run} safeText={safeText} onClose={close} onOverwrite={() => setDialog({kind: 'overwrite'})} onRestore={preview => setDialog({kind: 'restore', preview})} /> : <Modal.Container size={dialog?.kind === 'credits' ? 'lg' : 'sm'} placement="center"><Modal.Dialog>
         <Modal.Header><Modal.Heading>{title}</Modal.Heading></Modal.Header>
         <Modal.Body className="space-y-4">{body}{busy && dialog?.kind !== 'login' && <p role="status" className="flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}</Modal.Body>
-        <Modal.Footer><Button variant="tertiary" isDisabled={!!busy && dialog?.kind !== 'login'} onPress={() => void close()}>{dialog?.kind === 'credits' || dialog?.kind === 'settings' ? '关闭' : '取消'}</Button>{actions}</Modal.Footer>
-      </Modal.Dialog></Modal.Container>
+        <Modal.Footer><Button variant="tertiary" isDisabled={!!busy && dialog?.kind !== 'login'} onPress={() => void close()}>{dialog?.kind === 'credits' ? '关闭' : '取消'}</Button>{actions}</Modal.Footer>
+      </Modal.Dialog></Modal.Container>}
     </Modal.Backdrop>
   </main>;
 }

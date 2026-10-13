@@ -1,0 +1,34 @@
+import type {ReactNode} from 'react';
+import {Button, Input, Label, Modal, Spinner, TextField} from '@heroui/react';
+
+export type RunOperation = <T>(label: string, action: () => Promise<T>, done?: (result: T) => void) => Promise<void>;
+
+interface DialogFrameProps {
+  title: string;
+  busy: string;
+  onClose: () => Promise<void>;
+  children: ReactNode;
+  actions?: ReactNode;
+  closeLabel?: string;
+  size?: 'sm' | 'lg';
+}
+
+export function DialogFrame({title, busy, onClose, children, actions, closeLabel = '取消', size = 'sm'}: DialogFrameProps) {
+  return <Modal.Container size={size} placement="center"><Modal.Dialog>
+    <Modal.Header><Modal.Heading>{title}</Modal.Heading></Modal.Header>
+    <Modal.Body className="space-y-4">
+      {children}
+      {busy && <p role="status" className="flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
+    </Modal.Body>
+    <Modal.Footer>
+      <Button variant="tertiary" isDisabled={!!busy} onPress={() => void onClose()}>{closeLabel}</Button>
+      {actions}
+    </Modal.Footer>
+  </Modal.Dialog></Modal.Container>;
+}
+
+export function Field({label, value, onChange, type = 'text', disabled = false}: {label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'password' | 'url'; disabled?: boolean}) {
+  return <TextField value={value} onChange={onChange} isDisabled={disabled} className="w-full">
+    <Label>{label}</Label><Input type={type} autoComplete="off" spellCheck={false} />
+  </TextField>;
+}
