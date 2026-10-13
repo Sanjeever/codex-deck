@@ -5,9 +5,10 @@ import {dateTime} from '../accounts/accounts';
 import {notify} from '../notifications/Notifications';
 import {DialogFrame, Field} from './DialogFrame';
 import type {RunOperation} from '../app/useDeckController';
+import {ProxySettings} from './ProxySettings';
 
 interface SettingsDialogProps {
-  state: Pick<State, 'settings' | 'preferences' | 'backup' | 'build_info' | 'update'>;
+  state: Pick<State, 'network' | 'settings' | 'preferences' | 'backup' | 'build_info' | 'update'>;
   busy: string;
   run: RunOperation;
   safeText: (value: string) => string;
@@ -61,6 +62,7 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
           </Dropdown.Menu></Dropdown.Popover>
         </Dropdown>
       </div>
+      <ProxySettings config={state.network} busy={busy} privacy={state.preferences.privacy} run={run} />
       <Field label="WebDAV 目录地址" type="url" value={settings.webdav_url} onChange={value => setSettings({...settings, webdav_url: value})} disabled={!!busy} />
       <Field label="用户名" type={state.preferences.privacy ? 'password' : 'text'} value={settings.webdav_username} onChange={value => setSettings({...settings, webdav_username: value})} disabled={!!busy} />
       <Field label="密码" type="password" value={settings.webdav_password} onChange={value => setSettings({...settings, webdav_password: value})} disabled={!!busy} />

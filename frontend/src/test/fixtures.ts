@@ -2,6 +2,7 @@ import type {Account, State} from '../bridge/api';
 
 export function createState(overrides: Partial<State> = {}): State {
   return {
+    network: {mode: 'environment', url: '', username: '', password: ''},
     build_info: {version: '1.0.0', commit: '', development: true},
     update: {phase: '', error: '', version: '', notes: '', url: '', checked_at: null, downloaded: 0, total: 0},
     desktop_error: '',
