@@ -301,9 +301,22 @@ func (s *Service) Delete(id string) error {
 	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	mode, err := s.cli.StoreMode()
+	if err != nil {
+		return fmt.Errorf("核对当前账号失败: %w", err)
+	}
 	if err := s.store.Update(func(d *Data) error {
 		for n, a := range d.Accounts {
 			if a.ID == id {
+				if mode == "file" {
+					_, current, err := s.cli.Read()
+					if err != nil {
+						return fmt.Errorf("核对当前账号失败: %w", err)
+					}
+					if identityMatches(a, current) {
+						return fmt.Errorf("不能删除当前账号，请先切换到其他账号")
+					}
+				}
 				d.Accounts = append(d.Accounts[:n], d.Accounts[n+1:]...)
 				if d.LastSwitchedID == id {
 					d.LastSwitchedID = ""

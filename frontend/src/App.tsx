@@ -115,7 +115,7 @@ export default function App() {
   const menu = (key: string, account: Account) => {
     switch (key) {
       case 'alias': setAlias(account.alias); setDialog({kind: 'alias', account}); break;
-      case 'delete': setDialog({kind: 'delete', account}); break;
+      case 'delete': if (!account.current) setDialog({kind: 'delete', account}); break;
       case 'login': void login(account.id); break;
       case 'refresh': void run('正在刷新', () => backend().RefreshAccount(account.id)); break;
       case 'credits': showCredits(account); break;
@@ -164,8 +164,8 @@ export default function App() {
         title = '编辑别名'; body = <Field label="别名" value={alias} onChange={setAlias} disabled={!!busy} />;
         actions = <Button isDisabled={!!busy} onPress={() => void run('正在保存', () => backend().Rename(dialog.account.id, alias), () => success('别名已保存'))}>保存</Button>; break;
       case 'delete':
-        title = '删除账号'; body = <p>删除 {accountName(dialog.account)}？</p>;
-        actions = <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在删除', () => backend().Delete(dialog.account.id), () => success('账号已删除'))}>删除</Button>; break;
+        title = '删除账号'; body = <p>{activeAccount?.current ? '当前账号不能删除' : `删除 ${accountName(dialog.account)}？`}</p>;
+        actions = <Button variant="danger" isDisabled={!!busy || !!activeAccount?.current} onPress={() => void run('正在删除', () => backend().Delete(dialog.account.id), () => success('账号已删除'))}>删除</Button>; break;
       case 'switch':
         title = '切换账号'; body = <p>CLI 当前使用 {state?.cli_store || '未知'} 存储。改为文件存储并切换至 {accountName(dialog.account)}？</p>;
         actions = <Button isDisabled={!!busy} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), () => {setDialog(null); notify('info', '账号已切换', '重新启动 Codex CLI 后生效')})}>确认切换</Button>; break;
@@ -235,7 +235,7 @@ export default function App() {
         <td><Button size="sm" variant="ghost" className="px-0" isDisabled={!!busy} onPress={() => showCredits(account)}>{creditCount(account) == null ? '未知' : `${creditCount(account)} 张`}</Button></td>
         <td><div className="flex justify-end items-center gap-2">{!account.current && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => switchAccount(account)}>切换</Button>}
           <Dropdown><Dropdown.Trigger aria-label={`${accountName(account)} 操作`} isDisabled={!!busy} className="row-menu">···</Dropdown.Trigger><Dropdown.Popover><Dropdown.Menu aria-label="账号操作" onAction={key => menu(String(key), account)}>
-            <Dropdown.Item id="alias">编辑别名</Dropdown.Item><Dropdown.Item id="login">重新登录</Dropdown.Item><Dropdown.Item id="refresh">刷新用量</Dropdown.Item><Dropdown.Item id="credits">重置卡详情</Dropdown.Item><Dropdown.Item id="consume" isDisabled={creditCount(account) === 0 && !pendingConsumption(account)}>{pendingConsumption(account) ? '重试重置卡' : '使用重置卡'}</Dropdown.Item><Dropdown.Item id="delete" variant="danger">删除</Dropdown.Item>
+            <Dropdown.Item id="alias">编辑别名</Dropdown.Item><Dropdown.Item id="login">重新登录</Dropdown.Item><Dropdown.Item id="refresh">刷新用量</Dropdown.Item><Dropdown.Item id="credits">重置卡详情</Dropdown.Item><Dropdown.Item id="consume" isDisabled={creditCount(account) === 0 && !pendingConsumption(account)}>{pendingConsumption(account) ? '重试重置卡' : '使用重置卡'}</Dropdown.Item><Dropdown.Item id="delete" variant="danger" isDisabled={account.current}>删除</Dropdown.Item>
           </Dropdown.Menu></Dropdown.Popover></Dropdown>
         </div></td>
       </tr>)}</tbody>

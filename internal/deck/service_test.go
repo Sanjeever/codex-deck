@@ -77,11 +77,11 @@ func TestStartupImportsCLIWhenEmpty(t *testing.T) {
 			if accounts := second.GetState().Accounts; len(accounts) != 1 || accounts[0].ID != imported.ID {
 				t.Fatal("重启生成重复账号")
 			}
-			if err := second.Delete(imported.ID); err != nil {
-				t.Fatal(err)
+			if err := second.Delete(imported.ID); err == nil {
+				t.Fatal("删除当前账号未被拒绝")
 			}
-			if len(second.GetState().Accounts) != 0 {
-				t.Fatal("删除后立即重新导入")
+			if len(second.GetState().Accounts) != 1 {
+				t.Fatal("拒绝删除后账号丢失")
 			}
 			after, err := os.ReadFile(filepath.Join(cli.Home, "auth.json"))
 			if err != nil {
@@ -477,11 +477,11 @@ func TestAccountLoginDedupIdentityAndDelete(t *testing.T) {
 	if err = s.Rename(id, "新别名"); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Delete(id); err != nil {
-		t.Fatal(err)
+	if err = s.Delete(id); err == nil {
+		t.Fatal("删除当前账号未被拒绝")
 	}
-	if len(s.GetState().Accounts) != 0 {
-		t.Fatal("删除失败")
+	if len(s.GetState().Accounts) != 1 {
+		t.Fatal("拒绝删除后账号丢失")
 	}
 	_, cliIdentity, err := s.cli.Read()
 	if err != nil {
@@ -852,10 +852,64 @@ func TestSameEmailDifferentWorkspacesRemainDistinct(t *testing.T) {
 	if state.Accounts[0].Current || !state.Accounts[1].Current {
 		t.Fatal("当前账号未核对工作区")
 	}
-	if err := s.Delete(accounts[1].ID); err != nil {
+	if err := s.Delete(accounts[1].ID); err == nil {
+		t.Fatal("未保护当前工作区账号")
+	}
+	if err := s.Delete(accounts[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if s.GetState().Accounts[0].Current {
-		t.Fatal("删除当前账号后错误标记其他账号")
+	if len(s.GetState().Accounts) != 1 || !s.GetState().Accounts[0].Current {
+		t.Fatal("删除其他工作区后当前账号丢失")
+	}
+}
+
+func TestDeleteChecksLatestCLIIdentity(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	b := testAccount(t)
+	b.ID = "other-account"
+	b.AccountID = "other-workspace"
+	b.Tokens.AccountID = b.AccountID
+	b.Tokens.IDToken = testToken(t, b.UserID, b.AccountID, time.Now().Add(time.Hour))
+	b.Tokens.AccessToken = b.Tokens.IDToken
+	addTestAccount(t, s, a)
+	addTestAccount(t, s, b)
+	if err := s.Switch(a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.cli.Write(b.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(b.ID); err == nil || err.Error() != "不能删除当前账号，请先切换到其他账号" {
+		t.Fatalf("未按 CLI 最新身份拒绝删除: %v", err)
+	}
+	if err := s.Delete(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(filepath.Join(s.cli.Home, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) || len(s.GetState().Accounts) != 1 || s.GetState().Accounts[0].ID != b.ID {
+		t.Fatal("删除非当前账号改写 CLI 或丢失当前账号")
+	}
+}
+
+func TestDeleteRejectsUnreadableCurrentIdentity(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	if err := os.WriteFile(filepath.Join(s.cli.Home, "auth.json"), []byte("invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(a.ID); err == nil {
+		t.Fatal("无法核对 CLI 身份时仍删除账号")
+	}
+	if len(s.store.Snapshot().Accounts) != 1 {
+		t.Fatal("核对失败改写账号数据")
 	}
 }

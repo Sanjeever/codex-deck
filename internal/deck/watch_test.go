@@ -43,10 +43,10 @@ func TestWatchAtomicLoginLogoutAndMalformedAuth(t *testing.T) {
 	}
 	waitCLIState(t, s, func(state State) bool { return len(state.Accounts) == 1 && state.Accounts[0].Current })
 	id := s.GetState().Accounts[0].ID
-	if err := s.Delete(id); err != nil {
-		t.Fatal(err)
+	if err := s.Delete(id); err == nil {
+		t.Fatal("监听导入的当前账号仍可删除")
 	}
-	// 应用写入相同身份不会重新加入本次会话删除的账号。
+	// 相同身份的原子替换不产生重复账号。
 	if err := s.cli.Write(a.Tokens); err != nil {
 		t.Fatal(err)
 	}
@@ -62,12 +62,12 @@ func TestWatchAtomicLoginLogoutAndMalformedAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitCLIState(t, s, func(state State) bool {
-		return len(state.Accounts) == 1 && state.Accounts[0].AccountID == a.AccountID && state.Accounts[0].Current
+		return len(state.Accounts) == 2 && state.Accounts[1].AccountID == a.AccountID && state.Accounts[1].Current
 	})
 	if err := os.Remove(filepath.Join(s.cli.Home, "auth.json")); err != nil {
 		t.Fatal(err)
 	}
-	waitCLIState(t, s, func(state State) bool { return !state.Accounts[0].Current })
+	waitCLIState(t, s, func(state State) bool { return !state.Accounts[1].Current })
 	if err := os.WriteFile(filepath.Join(s.cli.Home, "auth.json"), []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestWatchAtomicLoginLogoutAndMalformedAuth(t *testing.T) {
 	if err := s.cli.Write(a.Tokens); err != nil {
 		t.Fatal(err)
 	}
-	waitCLIState(t, s, func(state State) bool { return state.CLIError == "" && state.Accounts[0].Current })
+	waitCLIState(t, s, func(state State) bool { return state.CLIError == "" && state.Accounts[1].Current })
 	if requests.Load() != 0 {
 		t.Fatal("文件监听触发业务 HTTP 请求")
 	}

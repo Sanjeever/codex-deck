@@ -95,3 +95,27 @@ it('配置加载失败保留错误和重试入口，重试成功后恢复界面'
     expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(false);
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
+
+it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用删除', async () => {
+  const current = {id: 'current', account_id: 'workspace', email: 'current@example.test', alias: '', plan: '', current: true, auth_error: '', usage: null, credits: null, usage_error: '', credits_error: '', pending_reset: null};
+  const other = {...current, id: 'other', account_id: 'other-workspace', email: 'other@example.test', current: false};
+  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [current, other], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  let update!: (value: State) => void;
+  const remove = vi.fn(async () => {});
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Delete: remove}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
+  try {
+    render(<App />);
+    await act(async () => {await Promise.resolve()});
+    fireEvent.click(screen.getByRole('button', {name: 'current@example.test 操作'}));
+    expect(screen.getByRole('menuitem', {name: '删除'}).getAttribute('aria-disabled')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('menu'), {key: 'Escape'});
+    fireEvent.click(screen.getByRole('button', {name: 'other@example.test 操作'}));
+    fireEvent.click(screen.getByRole('menuitem', {name: '删除'}));
+    expect((screen.getByRole('button', {name: '删除'}) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {update({...state, accounts: [{...current, current: false}, {...other, current: true}]})});
+    expect(screen.getByText('当前账号不能删除')).toBeTruthy();
+    expect((screen.getByRole('button', {name: '删除'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(remove).not.toHaveBeenCalled();
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});

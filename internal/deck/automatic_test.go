@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -97,7 +99,13 @@ func TestAutomaticRefreshPreservesDeletionAndRestore(t *testing.T) {
 	}
 	t.Cleanup(restarted.Shutdown)
 	id := restarted.GetState().Accounts[0].ID
+	if err := os.Remove(filepath.Join(s.cli.Home, "auth.json")); err != nil {
+		t.Fatal(err)
+	}
 	if err := restarted.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.cli.Write(a.Tokens); err != nil {
 		t.Fatal(err)
 	}
 	if state := restarted.RefreshAutomatic(); len(state.Accounts) != 0 {
@@ -153,18 +161,18 @@ func TestNextUsageRefreshDeadline(t *testing.T) {
 	}
 }
 
-func TestAutomaticRefreshKeepsDeletedAccountAfterDeckSwitch(t *testing.T) {
+func TestDeleteCurrentAccountAfterDeckSwitch(t *testing.T) {
 	s := testService(t)
 	a := testAccount(t)
 	addTestAccount(t, s, a)
 	if err := s.Switch(a.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Delete(a.ID); err != nil {
-		t.Fatal(err)
+	if err := s.Delete(a.ID); err == nil {
+		t.Fatal("切换后的当前账号仍可删除")
 	}
-	if state := s.RefreshAutomatic(); len(state.Accounts) != 0 {
-		t.Fatal("切换后删除的当前账号被自动重新导入")
+	if state := s.GetState(); len(state.Accounts) != 1 || !state.Accounts[0].Current {
+		t.Fatal("拒绝删除未保留当前账号")
 	}
 }
 
