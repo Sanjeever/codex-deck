@@ -86,7 +86,7 @@ func backupMetadata(ctx context.Context, settings Settings) (remoteBackup, bool,
 	}
 	meta := remoteMetadata(response)
 	if meta.ETag == "" {
-		// 坚果云 HEAD 没有 ETag，从同一资源的 GET 获取实际版本。
+		// HEAD 未提供 ETag 时从同一资源的 GET 获取实际版本，不能编造覆盖保护标识。
 		read, err := backupRequest(ctx, settings, http.MethodGet, nil, nil)
 		if err != nil {
 			return remoteBackup{}, false, err

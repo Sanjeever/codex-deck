@@ -14,7 +14,7 @@ type Identity struct {
 
 func tokenClaims(token string) (jwt.MapClaims, error) {
 	claims := jwt.MapClaims{}
-	// 与 CLI 相同，这里只解码 HTTPS OAuth 返回的 JWT 元数据，不用于验证签名。
+	// 只解码 JWT 身份元数据，不验证签名；本地导入的令牌仍需后续服务端请求验证有效性。
 	_, _, err := jwt.NewParser().ParseUnverified(token, claims)
 	if err != nil {
 		return nil, fmt.Errorf("认证令牌格式无效: %w", err)
