@@ -49,23 +49,13 @@ export default function App() {
   const safeText = (value: string) => privateText(value, privacy, state?.accounts ?? []);
   const [alias, setAlias] = useState('');
   const canceledLogin = useRef('');
-  const stateRevision = useRef(0);
-  const requestAutomatic = useCallback(async () => {
-    const revision = stateRevision.current;
-    const response = await backend().RefreshAutomatic();
-    return {revision, response};
-  }, []);
-  const applyAutomatic = useCallback((result: {revision: number; response: State}) => {
-    if (result.revision === stateRevision.current) setState(result.response);
-  }, []);
-  const automatic = useAutoRefresh(requestAutomatic, applyAutomatic, state !== null, !!busy || dialog !== null, state?.next_refresh_at ? Date.parse(state.next_refresh_at) : null);
+  const automatic = useAutoRefresh(state !== null, !!busy || dialog !== null);
 
   const run = useCallback(async <T,>(label: string, action: () => Promise<T>, done?: (result: T) => void) => {
     if (busyRef.current) return;
-    stateRevision.current++;
     busyRef.current = true; setBusy(label); setNotice(null);
     try {
-      await backend().CancelAutomatic();
+      await automatic.pause();
       const result = await action();
       setState(await backend().GetState());
       done?.(result);
@@ -75,7 +65,7 @@ export default function App() {
       setNotice({kind: 'error', text});
     }
     finally {busyRef.current = false; setBusy('')}
-  }, []);
+  }, [automatic.pause]);
 
   useEffect(() => {
     void run('正在加载', async () => {
@@ -83,14 +73,7 @@ export default function App() {
     });
   }, [run]);
 
-  useEffect(() => {
-    if (dialog) void backend().CancelAutomatic().catch(error => setNotice({kind: 'error', text: errorText(error)}));
-  }, [dialog]);
-
-  useEffect(() => window.runtime?.EventsOnMultiple('deck:state', response => {
-    stateRevision.current++;
-    setState(response);
-  }, -1), []);
+  useEffect(() => window.runtime?.EventsOnMultiple('deck:state', setState, -1), []);
 
   const close = async () => {
     if (busyRef.current && dialog?.kind !== 'login') return;
@@ -106,11 +89,10 @@ export default function App() {
 
   const login = async (target = '') => {
     if (busyRef.current) return;
-    stateRevision.current++;
     busyRef.current = true; setBusy('正在打开浏览器'); setNotice(null);
     let loginID = '';
     try {
-      await backend().CancelAutomatic();
+      await automatic.pause();
       const session = await backend().BeginLogin(target); loginID = session.id;
       setDialog({kind: 'login', id: session.id}); setBusy('等待浏览器登录');
       await backend().WaitLogin(session.id);
@@ -219,7 +201,7 @@ export default function App() {
       <h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && void run('正在保存', () => backend().SavePreferences({...state.preferences, privacy: !privacy}))}>隐私</Button>
-        <Button variant="secondary" size="sm" aria-label={automatic.refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{automatic.refreshing && <Spinner size="sm" />}刷新</Button>
+        <Button variant="secondary" size="sm" aria-label={state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={() => void run('正在刷新', () => backend().RefreshAll(), setState)}>{state?.auto_refreshing && <Spinner size="sm" />}刷新</Button>
         <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={openSettings}>设置</Button>
         <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
       </div>

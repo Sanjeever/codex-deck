@@ -108,14 +108,15 @@ type BackupStatus struct {
 }
 
 type State struct {
-	DesktopError  string        `json:"desktop_error"`
-	Preferences   Preferences   `json:"preferences"`
-	Accounts      []AccountView `json:"accounts"`
-	Settings      Settings      `json:"settings"`
-	CLIStore      string        `json:"cli_store"`
-	CLIError      string        `json:"cli_error"`
-	Backup        BackupStatus  `json:"backup"`
-	NextRefreshAt *time.Time    `json:"next_refresh_at"`
+	DesktopError   string        `json:"desktop_error"`
+	Preferences    Preferences   `json:"preferences"`
+	Accounts       []AccountView `json:"accounts"`
+	Settings       Settings      `json:"settings"`
+	CLIStore       string        `json:"cli_store"`
+	CLIError       string        `json:"cli_error"`
+	Backup         BackupStatus  `json:"backup"`
+	NextRefreshAt  *time.Time    `json:"next_refresh_at"`
+	AutoRefreshing bool          `json:"auto_refreshing"`
 }
 
 type BackupSync struct {

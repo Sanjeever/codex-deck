@@ -20,6 +20,7 @@ func (a *App) domReady(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	s.StartAutomatic()
 	if s.GetState().Preferences.LowQuotaNotify {
 		if err := a.initialiseNotifications(); err != nil {
 			s.SetDesktopError(err)

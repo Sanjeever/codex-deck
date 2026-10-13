@@ -73,12 +73,21 @@ func (a *App) RefreshAll() (deck.State, error) {
 	}
 	return s.RefreshAll(), nil
 }
-func (a *App) RefreshAutomatic() (deck.State, error) {
+func (a *App) SetAutomaticPaused(paused bool) error {
 	s, err := a.backend()
 	if err != nil {
-		return deck.State{}, err
+		return err
 	}
-	return s.RefreshAutomatic(), nil
+	s.SetAutomaticPaused(paused)
+	return nil
+}
+func (a *App) WakeAutomatic() error {
+	s, err := a.backend()
+	if err != nil {
+		return err
+	}
+	s.WakeAutomatic()
+	return nil
 }
 func (a *App) RefreshAccount(id string) error {
 	s, err := a.backend()
@@ -199,15 +208,6 @@ func (a *App) CancelLogin(id string) error {
 		return err
 	}
 	s.CancelLogin(id)
-	return nil
-}
-
-func (a *App) CancelAutomatic() error {
-	s, err := a.backend()
-	if err != nil {
-		return err
-	}
-	s.CancelAutomatic()
 	return nil
 }
 

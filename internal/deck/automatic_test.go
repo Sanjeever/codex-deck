@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -165,4 +166,145 @@ func TestAutomaticRefreshKeepsDeletedAccountAfterDeckSwitch(t *testing.T) {
 	if state := s.RefreshAutomatic(); len(state.Accounts) != 0 {
 		t.Fatal("切换后删除的当前账号被自动重新导入")
 	}
+}
+
+func TestAutomaticSchedulerRefreshesAtResetAndNotifiesWithoutFrontend(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	reset := time.Now().Add(150 * time.Millisecond)
+	a.Usage = &Usage{FiveHour: &Window{RemainingPercent: 20, ResetAt: &reset}, QueriedAt: time.Now()}
+	addTestAccount(t, s, a)
+	if err := s.cli.Write(a.Tokens); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SavePreferences(Preferences{LowQuotaNotify: true}); err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Write([]byte(`{"plan_type":"plus","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":95}}}`))
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	notices := make(chan string, 2)
+	s.SetNotifier(func(body string) error { notices <- body; return nil })
+	completed := make(chan State, 8)
+	s.SetOnChange(func(state State) {
+		if !state.AutoRefreshing && state.Accounts[0].Usage.FiveHour.RemainingPercent == 5 {
+			completed <- state
+		}
+	})
+	s.StartAutomatic()
+	select {
+	case body := <-notices:
+		if !strings.Contains(body, "5H 剩余 5.0%") {
+			t.Fatal(body)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("无前端调用时未按恢复时间查询并通知")
+	}
+	select {
+	case state := <-completed:
+		if state.NextRefreshAt.Before(time.Now().Add(4 * time.Minute)) {
+			t.Fatal("刷新后未沿用五分钟间隔")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("未发布后台查询结果")
+	}
+	s.WakeAutomatic()
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("调度未响应唤醒")
+	}
+	if requests.Load() != 1 || len(notices) != 0 {
+		t.Fatal("唤醒重复查询未到期缓存或重复通知")
+	}
+}
+
+func TestAutomaticSchedulerPauseCancelsRequestAndResumes(t *testing.T) {
+	s := testService(t)
+	a := testAccount(t)
+	addTestAccount(t, s, a)
+	entered := make(chan struct{}, 4)
+	stopped := make(chan struct{}, 1)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requests.Add(1)
+		entered <- struct{}{}
+		if n == 1 {
+			<-r.Context().Done()
+			stopped <- struct{}{}
+			return
+		}
+		w.Write([]byte(`{"plan_type":"plus"}`))
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	completed := make(chan State, 4)
+	s.SetOnChange(func(state State) {
+		if !state.AutoRefreshing {
+			completed <- state
+		}
+	})
+	s.StartAutomatic()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("未启动自动查询")
+	}
+	s.SetAutomaticPaused(true)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("暂停未取消用量请求")
+	}
+	<-completed
+	if err := s.Rename(a.ID, "操作期间修改"); err != nil {
+		t.Fatal(err)
+	}
+	s.WakeAutomatic()
+	select {
+	case <-entered:
+		t.Fatal("暂停期间仍发出请求")
+	case <-time.After(50 * time.Millisecond):
+	}
+	s.SetAutomaticPaused(false)
+	select {
+	case state := <-completed:
+		if state.Accounts[0].Usage == nil || state.Accounts[0].Alias != "操作期间修改" || state.Accounts[0].UsageError != "" {
+			t.Fatal("恢复查询未保留用户修改或取消污染状态")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("操作结束后未恢复查询")
+	}
+}
+
+func TestAutomaticSchedulerShutdownCancelsInFlightRequest(t *testing.T) {
+	s := testService(t)
+	addTestAccount(t, s, testAccount(t))
+	entered := make(chan struct{})
+	stopped := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		close(stopped)
+	}))
+	defer server.Close()
+	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+	s.StartAutomatic()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("未启动自动查询")
+	}
+	done := make(chan struct{})
+	go func() { s.Shutdown(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("退出仍在等待用量请求")
+	}
+	<-stopped
 }

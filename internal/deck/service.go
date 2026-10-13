@@ -17,7 +17,13 @@ type Service struct {
 	mu                  sync.Mutex
 	refreshMu           sync.Mutex
 	autoMu              sync.Mutex
+	autoRunMu           sync.Mutex
 	autoCancel          context.CancelFunc
+	autoPaused          bool
+	autoRefreshing      bool
+	autoOnce            sync.Once
+	autoWorkers         sync.WaitGroup
+	autoWake            chan struct{}
 	store               *Store
 	cli                 CLI
 	oauth               OAuth
@@ -59,7 +65,7 @@ func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	client := &http.Client{Timeout: 30 * time.Second}
-	s := &Service{cancel: cancel, backupWake: make(chan struct{}, 1), store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}, usageTries: map[string]time.Time{}}
+	s := &Service{cancel: cancel, autoWake: make(chan struct{}, 1), backupWake: make(chan struct{}, 1), store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}, usageTries: map[string]time.Time{}}
 	s.mu.Lock()
 	s.syncCLIAccount(false)
 	s.mu.Unlock()
@@ -141,7 +147,7 @@ func (s *Service) state() State {
 			nextRefresh = next
 		}
 	}
-	state := State{DesktopError: s.desktopError, Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh}
+	state := State{DesktopError: s.desktopError, Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh, AutoRefreshing: s.autoRefreshing}
 	if s.watchError != "" {
 		state.CLIError = strings.TrimSpace(state.CLIError + " " + s.watchError)
 	}
@@ -349,6 +355,7 @@ func (s *Service) CancelLogin(id string) {
 func (s *Service) Shutdown() {
 	s.cancel()
 	s.CancelAutomatic()
+	s.autoWorkers.Wait()
 	s.stopBackup()
 	s.backupWorkers.Wait()
 	s.watchWorkers.Wait()
