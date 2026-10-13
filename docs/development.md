@@ -61,6 +61,16 @@ Go 入口嵌入前端构建产物，干净检出首次运行根包 Go 检查前�
 
 Go 测试使用临时目录、本地签发令牌和本地 HTTP 服务；前端测试使用替身 Wails 绑定。正常启动完整应用会访问真实用户配置和 CLI 目录，不能把开发启动当作隔离测试。涉及账号保存、CLI 写入、备份恢复与更新替换的验证应使用隔离数据，不能覆盖用户实际状态。
 
+会话解析和检索测试使用临时目录中的合成 rollout JSONL，前端会话测试使用替身 Wails 绑定。针对会话功能可运行：
+
+```sh
+go test ./internal/sessions
+go test . -run TestSessionBindingsIndependentOfAccounts
+pnpm --dir frontend test src/sessions/SessionBrowser.test.tsx src/app/App.test.tsx src/app/useKeyboardShortcuts.test.tsx
+```
+
+原型入口已移除，正式会话页面通过主窗口顶部切换访问。桌面验证需同时隔离用户目录和 `CODEX_HOME`，只放入合成会话，不提供真实令牌或 WebDAV 配置。浏览器替身可以检查布局和竞态，但不证明真实 Wails/WebView 文件读取已通过。协议核对的提交与支持范围见 [本地会话浏览](usage.md#本地会话浏览)。
+
 [真实 WebDAV 测试](../internal/deck/webdav_integration_test.go) 只有配置测试服务环境变量后才启用，并会操作远端测试文件。获得明确授权后才可运行，应使用独立空目录；具体变量以测试入口为准。已有文件时跳过不代表集成验证通过。
 
 编译、模拟测试与真实验证应分开记录。用测试替身不能证明 OpenAI 授权或卡片消费成功，CI 原生构建不能证明桌面托盘、通知权限、原生文件对话框和自动升级实际可用。只改文档或注释时检查内容、链接与最终 diff，无需重跑编译或测试。

@@ -1,6 +1,6 @@
 # Codex Deck
 
-Codex Deck 是管理 Codex CLI 多个 ChatGPT 账号、套餐额度和重置卡的桌面应用。使用 Go、Wails、React 和 HeroUI，主题跟随系统。
+Codex Deck 是管理 Codex CLI 多个 ChatGPT 账号、套餐额度和重置卡，以及只读浏览本地会话的桌面应用。使用 Go、Wails、React 和 HeroUI，主题跟随系统。
 
 ![Codex Deck 账号列表与操作菜单](docs/screenshots/accounts.png)
 
@@ -14,12 +14,13 @@ Codex Deck 是管理 Codex CLI 多个 ChatGPT 账号、套餐额度和重置卡�
 - 隐私模式、单实例、托盘驻留、可选开机自启动和低额度通知。
 - 展示程序版本，检查正式版更新，确认后下载安装并重启。
 - 图形化配置 HTTP/HTTPS 代理，支持连接测试与保存后即时生效。
+- 本地会话搜索、项目与日期筛选、按轮次阅读执行记录和工具输出。
 
 ## 安装与使用
 
 从 [GitHub Releases](https://github.com/Sanjeever/codex-deck/releases) 下载对应平台的包，解压后运行。macOS 包包含完整 `.app`；Windows 和 Linux 包包含可执行文件。发布架构与运行依赖见 [开发与发布](docs/development.md)。
 
-添加账号后可查看额度与执行账号操作。设置通过对话框打开，关闭窗口后仍驻留托盘，通过托盘“退出”结束进程。托盘不可用时，关闭窗口会退出，界面会提示原因。
+顶部切换账号与会话工作区。添加账号后可查看额度与执行账号操作，会话页直接读取本机 Codex 记录。设置通过对话框打开，关闭窗口后仍驻留托盘，通过托盘“退出”结束进程。托盘不可用时，关闭窗口会退出，界面会提示原因。
 
 应用配置、认证导入导出、CLI 切换、WebDAV 与桌面设置见 [使用指南](docs/usage.md)。配置和导出文件含明文登录凭据，请勿公开分享。
 
@@ -50,8 +51,9 @@ Linux 的 WebKitGTK 构建标签、桌面构建、版本 bump、发布和验证�
 | --- | --- |
 | 根目录 Go 文件 | 桌面入口、Wails 绑定与系统交互 |
 | `internal/deck` | 账号、认证、额度、持久状态与 WebDAV |
+| `internal/sessions` | 只读会话解析、本地检索与分页 |
 | `internal/autostart`、`internal/tray`、`internal/update`、`internal/network` | 自启动、托盘、程序更新与统一代理路由 |
-| `frontend/src` | 应用控制、账号展示、对话框、消息和接口类型 |
+| `frontend/src` | 应用控制、账号与会话展示、对话框、消息和接口类型 |
 | `build`、`scripts`、`.github/workflows` | 平台打包资源、版本工具与发布工作流 |
 
 ## 文档入口
