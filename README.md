@@ -26,6 +26,20 @@ Codex Deck 是管理 Codex CLI 多账号、套餐额度和重置卡的桌面应�
 
 前端源码按职责组织。`frontend/src/app` 管理应用状态与调度，`accounts` 保存账号展示与表格，`dialogs` 保存设置与操作对话框，`notifications` 管理消息，`bridge` 定义 Wails 接口，`test` 保存共享测试配置与数据。测试文件与对应模块放在一起。
 
+## 版本、发布与更新
+
+版本以 `frontend/package.json` 为准。执行 `pnpm --dir frontend bump 1.0.1` 同步修改该文件和 `wails.json`，检查后提交，再创建并推送 `v1.0.1` 标签。`node scripts/version.mjs check v1.0.1` 检查版本一致性。
+
+推送 `v*` 标签触发 GitHub Actions。工作流检查版本、运行测试，并原生构建 Windows amd64、macOS Universal 和 Linux amd64。全部成功后统一发布完整 Release。Windows 发布包含 exe 的 zip，macOS 发布完整 app 的 zip，Linux 发布 tar.gz。Linux 构建使用 Ubuntu 22.04、GTK 3 和 WebKitGTK 4.1，目标系统需要对应运行库与桌面托盘宿主。
+
+主窗口显示版本，设置中显示构建提交号、检查更新与自动检查开关。正式发布包启动 30 秒后检查一次，此后每 6 小时检查；只接收本仓库正式 Release。窗口隐藏时不唤起，已有对话框时等待操作完成，同一版本每次运行提醒一次。开发构建停用自动检查与安装。本地正式构建需传入 `-ldflags "-X main.releaseBuild=true"`。
+
+确认后下载并显示进度，下载期间可取消。下载完成后辅助进程等待旧程序退出，替换原路径的 exe、Linux 可执行文件或完整 app，再重启。替换失败恢复旧程序并提示。临时目录位于安装目录，成功重启后清理；目录不可写时明确报错，可使用发布说明中的手动下载入口。更新不修改账号、CLI 凭据或自启动路径。
+
+macOS 工作流支持 Developer ID 签名与公证。在 GitHub Secrets 配置 `MACOS_CERTIFICATE`（p12 的 Base64）、`MACOS_CERTIFICATE_PASSWORD`、`MACOS_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_PASSWORD`。未配置证书时工作流明确输出未签名状态，仍发布构建产物；macOS 可能拦截未签名程序的打开与更新。
+
+更新模块通过本地 HTTP 服务和临时文件验证版本比较、附件匹配、解压路径限制和替换失败恢复。真实 GitHub Actions 三平台构建、macOS 签名与公证及各平台实际升级需在发布后检查，不能以本地测试代替。
+
 ## 开发与构建
 
 开发环境使用 Go 1.23、Node.js 26、pnpm 11.20.0 和 Wails CLI v2.12.0。macOS 需要 Xcode Command Line Tools，其他平台依赖见 [Wails 安装文档](https://wails.io/docs/gettingstarted/installation/)。

@@ -9,7 +9,7 @@ const pkg = JSON.parse(readFileSync(packagePath, 'utf8'));
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const [command, value] = process.argv.slice(2);
 if (command === 'bump') {
-  if (!/^\d+\.\d+\.\d+$/.test(value ?? '')) throw new Error('请输入正式版本，例如 1.0.0');
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value ?? '')) throw new Error('请输入正式版本，例如 1.0.0');
   pkg.version = value;
   config.info = {...config.info, productVersion: value};
   writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n');

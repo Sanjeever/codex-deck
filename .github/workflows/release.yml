@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$CERTIFICATE" ]; then echo '未配置 Developer ID 证书，发布未签名 macOS 包'; exit 0; fi
-          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$CERTIFICATE" | base64 -D > "$RUNNER_TEMP/certificate.p12"
           security create-keychain -p "$CERTIFICATE_PASSWORD" "$RUNNER_TEMP/release.keychain"
           security set-keychain-settings -lut 21600 "$RUNNER_TEMP/release.keychain"
           security unlock-keychain -p "$CERTIFICATE_PASSWORD" "$RUNNER_TEMP/release.keychain"
