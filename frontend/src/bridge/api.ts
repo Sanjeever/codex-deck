@@ -10,9 +10,14 @@ export interface Account {id: string; account_id: string; email: string; alias: 
 export interface State {build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean}
 export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
+export interface AuthImportPreview extends PreviewAccount {id: string; existing: boolean}
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  ImportAuth(): Promise<AuthImportPreview | null>;
+  ConfirmAuthImport(id: string): Promise<void>;
+  CancelAuthImport(): Promise<void>;
+  ExportAuth(id: string): Promise<boolean>;
   CheckUpdate(): Promise<void>;
   InstallUpdate(): Promise<void>;
   CancelUpdate(): Promise<void>;
