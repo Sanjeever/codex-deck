@@ -2,6 +2,7 @@ import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import App from './App';
 import type {State} from '../bridge/api';
+import {createState} from '../test/fixtures';
 import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
@@ -11,7 +12,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 0}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date().toISOString(), auto_refreshing: true};
+  const state = createState({preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 0}, next_refresh_at: new Date().toISOString(), auto_refreshing: true});
   let update!: (value: State) => void;
   const api = {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), WakeAutomatic: vi.fn(async () => {}), GetAutoStart: vi.fn(async () => false)};
   vi.stubGlobal('go', {main: {App: api}});
@@ -36,7 +37,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
 
 it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区', async () => {
   const account = {id: 'record', account_id: 'workspace-sensitive', email: 'private@example.test', alias: '', plan: 'plus', current: true, auth_error: '', usage: null, credits: null, usage_error: '查询 private@example.test workspace-sensitive 失败', credits_error: '', pending_reset: null};
-  const state: State = {desktop_error: '', preferences: {privacy: true, sort: '', low_quota_notify: false, low_quota_threshold: 0}, accounts: [account], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date(Date.now() + 300_000).toISOString(), auto_refreshing: false};
+  const state = createState({preferences: {privacy: true, sort: '', low_quota_notify: false, low_quota_threshold: 0}, accounts: [account], next_refresh_at: new Date(Date.now() + 300_000).toISOString()});
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state)}}});
   try {
     const view = render(<App />);
@@ -52,7 +53,7 @@ it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区'
 
 it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留', async () => {
   vi.useFakeTimers();
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const state = createState();
   const save = vi.fn(async () => {});
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), SaveSettings: save}}});
   try {
@@ -81,7 +82,7 @@ it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留'
 
 it('配置加载失败保留错误和重试入口，重试成功后恢复界面', async () => {
   vi.useFakeTimers();
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const state = createState();
   const getState = vi.fn<() => Promise<State>>().mockRejectedValue(new Error('配置 JSON 损坏'));
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: getState}}});
   try {
@@ -99,7 +100,7 @@ it('配置加载失败保留错误和重试入口，重试成功后恢复界面'
 it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用删除', async () => {
   const current = {id: 'current', account_id: 'workspace', email: 'current@example.test', alias: '', plan: '', current: true, auth_error: '', usage: null, credits: null, usage_error: '', credits_error: '', pending_reset: null};
   const other = {...current, id: 'other', account_id: 'other-workspace', email: 'other@example.test', current: false};
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [current, other], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const state = createState({accounts: [current, other]});
   let update!: (value: State) => void;
   const remove = vi.fn(async () => {});
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Delete: remove}}});
@@ -121,7 +122,7 @@ it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用�
 });
 
 it('自启动从系统读取，修改成功才更新开关，失败保留原状态', async () => {
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const state = createState();
   let systemEnabled = false;
   let finish!: (value: boolean) => void;
   const get = vi.fn(async () => systemEnabled);
@@ -154,7 +155,7 @@ it('自启动从系统读取，修改成功才更新开关，失败保留原状�
 });
 
 it('读取自启动状态失败可重试，不清空设置输入', async () => {
-  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const state = createState();
   const get = vi.fn<() => Promise<boolean>>().mockRejectedValueOnce(new Error('读取启动项失败')).mockResolvedValue(false);
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: get}}});
   try {

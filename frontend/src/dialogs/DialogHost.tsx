@@ -49,6 +49,6 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
       break;
   }
   return <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void props.onClose()}} isDismissable={!props.busy} isKeyboardDismissDisabled={!!props.busy && dialog?.kind !== 'login'}>
-    {content}
+    <Modal.Container size={dialog?.kind === 'credits' ? 'lg' : 'sm'} placement="center">{content}</Modal.Container>
   </Modal.Backdrop>;
 }

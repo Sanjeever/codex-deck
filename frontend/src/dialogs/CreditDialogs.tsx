@@ -28,7 +28,7 @@ export function CreditDialogs({dialog, state, busy, run, onClose, setDialog, use
   const account = state.accounts.find(a => a.id === dialog.account.id) ?? dialog.account;
   const count = creditCount(account);
   const pending = pendingConsumption(account);
-  return <DialogFrame title="重置卡" busy={busy} onClose={onClose} closeLabel="关闭" size="lg" actions={<>
+  return <DialogFrame title="重置卡" busy={busy} onClose={onClose} closeLabel="关闭" actions={<>
     <Button variant="secondary" isDisabled={!!busy} onPress={() => void run('正在查询重置卡', () => backend().RefreshCredits(account.id))}>刷新</Button>
     <Button isDisabled={!!busy || (count === 0 && !pending)} onPress={() => useCredit(account)}>{pending ? '重试重置卡' : '使用重置卡'}</Button>
   </>}>

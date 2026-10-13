@@ -10,11 +10,10 @@ interface DialogFrameProps {
   children: ReactNode;
   actions?: ReactNode;
   closeLabel?: string;
-  size?: 'sm' | 'lg';
 }
 
-export function DialogFrame({title, busy, onClose, children, actions, closeLabel = '取消', size = 'sm'}: DialogFrameProps) {
-  return <Modal.Container size={size} placement="center"><Modal.Dialog>
+export function DialogFrame({title, busy, onClose, children, actions, closeLabel = '取消'}: DialogFrameProps) {
+  return <Modal.Dialog>
     <Modal.Header><Modal.Heading>{title}</Modal.Heading></Modal.Header>
     <Modal.Body className="space-y-4">
       {children}
@@ -24,7 +23,7 @@ export function DialogFrame({title, busy, onClose, children, actions, closeLabel
       <Button variant="tertiary" isDisabled={!!busy} onPress={() => void onClose()}>{closeLabel}</Button>
       {actions}
     </Modal.Footer>
-  </Modal.Dialog></Modal.Container>;
+  </Modal.Dialog>;
 }
 
 export function Field({label, value, onChange, type = 'text', disabled = false}: {label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'password' | 'url'; disabled?: boolean}) {

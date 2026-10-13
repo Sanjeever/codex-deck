@@ -2,11 +2,8 @@ import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {toast} from '@heroui/react';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {Notifications, notify} from './Notifications';
-import type {State} from '../bridge/api';
+import {createState as state} from '../test/fixtures';
 
-function state(): State {
-  return {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
-}
 
 beforeEach(() => {vi.useFakeTimers()});
 afterEach(() => {cleanup(); toast.clear(); vi.restoreAllMocks(); vi.useRealTimers()});
