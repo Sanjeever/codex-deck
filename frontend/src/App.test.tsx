@@ -2,6 +2,7 @@ import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import App from './App';
 import type {State} from './api';
+import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
 
@@ -30,7 +31,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
     expect((address as HTMLInputElement).value).toBe('https://example.test/backup/');
     await act(async () => {await vi.advanceTimersByTimeAsync(600_000)});
     expect(api.SetAutomaticPaused).toHaveBeenLastCalledWith(true);
-  } finally {vi.unstubAllGlobals()}
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
 it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区', async () => {
@@ -42,7 +43,55 @@ it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区'
     await act(async () => {await Promise.resolve()});
     expect(view.container.innerHTML).not.toContain(account.email);
     expect(view.container.innerHTML).not.toContain(account.account_id);
+    expect(document.body.innerHTML).not.toContain(account.email);
+    expect(document.body.innerHTML).not.toContain(account.account_id);
     expect(screen.getByRole('button', {name: '隐私'}).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', {name: '••••@•••• 操作'})).toBeTruthy();
-  } finally {vi.unstubAllGlobals()}
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留', async () => {
+  vi.useFakeTimers();
+  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const save = vi.fn(async () => {});
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), SaveSettings: save}}});
+  try {
+    render(<App />);
+    await act(async () => {await Promise.resolve()});
+    fireEvent.click(screen.getByRole('button', {name: '设置'}));
+    const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
+    fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存'})); await Promise.resolve()});
+    expect(screen.getByRole('alertdialog', {name: '设置已保存'})).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(address.value).toBe('https://example.test/backup/');
+    await act(async () => {await vi.advanceTimersByTimeAsync(5000)});
+    expect(screen.queryByText('设置已保存')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    save.mockRejectedValueOnce(new Error('设置写入失败'));
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存'})); await Promise.resolve()});
+    expect(screen.getByRole('alertdialog', {name: '操作失败'})).toBeTruthy();
+    expect(screen.getByText('设置写入失败')).toBeTruthy();
+    await act(async () => {await vi.advanceTimersByTimeAsync(8000)});
+    expect(screen.queryByText('设置写入失败')).toBeNull();
+    expect(address.value).toBe('https://example.test/backup/');
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('配置加载失败保留错误和重试入口，重试成功后恢复界面', async () => {
+  vi.useFakeTimers();
+  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const getState = vi.fn<() => Promise<State>>().mockRejectedValue(new Error('配置 JSON 损坏'));
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: getState}}});
+  try {
+    render(<App />);
+    await act(async () => {await Promise.resolve()});
+    await act(async () => {await vi.advanceTimersByTimeAsync(8000)});
+    expect(screen.getByRole('alert').textContent).toBe('配置 JSON 损坏');
+    getState.mockResolvedValue(state);
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '重试加载'})); await Promise.resolve()});
+    expect(screen.queryByText('配置 JSON 损坏')).toBeNull();
+    expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(false);
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
