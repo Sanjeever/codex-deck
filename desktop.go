@@ -62,6 +62,7 @@ func (a *App) domReady(ctx context.Context) {
 		}
 	}
 	s.StartAutomatic()
+	a.startUpdateChecks()
 	if s.GetState().Preferences.LowQuotaNotify {
 		if err := a.initialiseNotifications(); err != nil {
 			s.SetDesktopError(err)
@@ -92,6 +93,12 @@ func (a *App) domReady(ctx context.Context) {
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
+	a.desktopMu.Lock()
+	installing := a.updateInstalling
+	a.desktopMu.Unlock()
+	if installing {
+		return false
+	}
 	s, err := a.backend()
 	if err != nil {
 		return false

@@ -126,8 +126,9 @@ type BackupSync struct {
 }
 
 type Preferences struct {
-	LowQuotaNotify    bool   `json:"low_quota_notify"`
-	LowQuotaThreshold int    `json:"low_quota_threshold"`
-	Privacy           bool   `json:"privacy"`
-	Sort              string `json:"sort"`
+	DisableUpdateCheck bool   `json:"disable_update_check"`
+	LowQuotaNotify     bool   `json:"low_quota_notify"`
+	LowQuotaThreshold  int    `json:"low_quota_threshold"`
+	Privacy            bool   `json:"privacy"`
+	Sort               string `json:"sort"`
 }

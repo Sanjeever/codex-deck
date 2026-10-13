@@ -6,13 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"codex-deck/internal/deck"
+	"codex-deck/internal/update"
 	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
+	updater            *update.Manager
+	updateFailure      string
+	updateInstalling   bool
 	autoStartMu        sync.Mutex
 	startHidden        bool
 	desktopMu          sync.Mutex
@@ -45,13 +50,24 @@ func (a *App) startup(ctx context.Context) {
 	a.service, a.err = deck.NewService(ctx, filepath.Join(home, ".codex-deck.json"), cliHome)
 	if a.err == nil {
 		a.service.SetNotifier(a.notifyLowQuota)
-		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", state) })
+		a.updater = update.New(currentBuild().Version, func() { runtime.EventsEmit(ctx, "deck:state", a.viewState(a.service.GetState())) })
+		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", a.viewState(state)) })
 		a.err = a.service.StartWatching()
 	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	defer func() {
+		if a.updater != nil {
+			if err := a.updater.ReleaseParent(); err != nil {
+				println(err.Error())
+			}
+		}
+	}()
 	<-a.ready
+	if a.updater != nil {
+		a.updater.Stop()
+	}
 	if a.cancel != nil {
 		a.cancel()
 	}
@@ -71,19 +87,98 @@ func (a *App) shutdown(ctx context.Context) {
 
 func (a *App) backend() (*deck.Service, error) { <-a.ready; return a.service, a.err }
 
-func (a *App) GetState() (deck.State, error) {
+func (a *App) GetState() (AppState, error) {
 	s, err := a.backend()
 	if err != nil {
-		return deck.State{}, err
+		return AppState{}, err
 	}
-	return s.GetState(), nil
+	return a.viewState(s.GetState()), nil
 }
-func (a *App) RefreshAll() (deck.State, error) {
+func (a *App) RefreshAll() (AppState, error) {
 	s, err := a.backend()
 	if err != nil {
-		return deck.State{}, err
+		return AppState{}, err
 	}
-	return s.RefreshAll(), nil
+	return a.viewState(s.RefreshAll()), nil
+}
+
+type AppState struct {
+	deck.State
+	BuildInfo BuildInfo    `json:"build_info"`
+	Update    update.State `json:"update"`
+}
+
+func (a *App) viewState(state deck.State) AppState {
+	result := AppState{State: state, BuildInfo: currentBuild()}
+	if a.updater != nil {
+		result.Update = a.updater.State()
+	}
+	a.desktopMu.Lock()
+	result.Update.Error = firstUpdateError(result.Update.Error, a.updateFailure)
+	a.desktopMu.Unlock()
+	return result
+}
+func firstUpdateError(current, startup string) string {
+	if startup != "" {
+		return startup
+	}
+	return current
+}
+func (a *App) CheckUpdate() error {
+	if _, err := a.backend(); err != nil {
+		return err
+	}
+	return a.updater.Check(a.ctx)
+}
+func (a *App) InstallUpdate() error {
+	if _, err := a.backend(); err != nil {
+		return err
+	}
+	if currentBuild().Development {
+		return fmt.Errorf("开发版不能自动安装更新")
+	}
+	go func() {
+		if err := a.updater.Start(a.ctx, func() error {
+			if runtime.WindowIsNormal(a.ctx) {
+				width, height := runtime.WindowGetSize(a.ctx)
+				x, y := runtime.WindowGetPosition(a.ctx)
+				if err := a.service.SaveWindow(deck.WindowState{Width: width, Height: height, X: x, Y: y}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}, func() { a.desktopMu.Lock(); a.updateInstalling = true; a.desktopMu.Unlock(); a.quit() }); err != nil {
+			println(err.Error())
+		}
+	}()
+	return nil
+}
+func (a *App) CancelUpdate() {
+	if a.updater != nil {
+		a.updater.Cancel()
+	}
+}
+func (a *App) startUpdateChecks() {
+	if currentBuild().Development {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(30 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case <-a.ctx.Done():
+				return
+			case <-timer.C:
+				if !a.service.GetState().Preferences.DisableUpdateCheck {
+					if err := a.updater.Check(a.ctx); err != nil {
+						println(err.Error())
+					}
+				}
+				timer.Reset(6 * time.Hour)
+			}
+		}
+	}()
 }
 func (a *App) SetAutomaticPaused(paused bool) error {
 	s, err := a.backend()

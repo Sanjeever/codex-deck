@@ -12,6 +12,7 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/studio-b12/gowebdav v0.13.0
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/mod v0.23.0
 	golang.org/x/net v0.35.0
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/sys v0.30.0
