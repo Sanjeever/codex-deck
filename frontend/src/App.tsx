@@ -41,6 +41,7 @@ export default function App() {
   const busyRef = useRef(false);
   const [loadError, setLoadError] = useState('');
   const [settings, setSettings] = useState<Settings>({webdav_url: '', webdav_username: '', webdav_password: ''});
+  const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const privacy = state?.preferences.privacy ?? false;
@@ -123,7 +124,13 @@ export default function App() {
     }
   };
 
-  const openSettings = () => {if (state) {setSettings({...state.settings}); setDialog({kind: 'settings'})}};
+  const readAutoStart = () => void run('正在读取自启动设置', () => backend().GetAutoStart(), setAutoStart);
+  const openSettings = () => {
+    if (state) {
+      setSettings({...state.settings}); setAutoStart(null); setDialog({kind: 'settings'});
+      readAutoStart();
+    }
+  };
   useKeyboardShortcuts(!!state && !busy && !dialog, {
     refresh: () => void run('正在刷新', () => backend().RefreshAll(), setState),
     settings: openSettings, login: () => void login(), search: () => searchRef.current?.focus(),
@@ -142,6 +149,12 @@ export default function App() {
       case 'settings':
         title = '设置';
         body = <div className="space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <Switch isSelected={autoStart === true} isDisabled={!!busy || autoStart === null} onChange={value => void run('正在修改自启动设置', () => backend().SetAutoStart(value), enabled => {setAutoStart(enabled); notify('success', enabled ? '已开启开机自启动' : '已关闭开机自启动')})}>
+              <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>开机自启动</Label></Switch.Content>
+            </Switch>
+            {autoStart === null && !busy && <Button variant="ghost" size="sm" onPress={readAutoStart}>重试读取</Button>}
+          </div>
           {state && <div className="flex items-center justify-between gap-4">
             <Switch isSelected={state.preferences.low_quota_notify} isDisabled={!!busy} onChange={value => void run('正在保存通知设置', () => backend().SavePreferences({...state.preferences, low_quota_notify: value}))}>
               <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>低额度通知</Label></Switch.Content>

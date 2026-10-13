@@ -5,12 +5,16 @@ import (
 	"fmt"
 	systemruntime "runtime"
 
+	"codex-deck/internal/autostart"
 	"codex-deck/internal/deck"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-func (a *App) activate(_ options.SecondInstanceData) {
+func (a *App) activate(data options.SecondInstanceData) {
+	if autostart.IsLaunch(data.Args) {
+		return
+	}
 	<-a.ready
 	a.showWindow()
 }
@@ -33,7 +37,18 @@ func (a *App) quit() {
 
 func (a *App) domReady(ctx context.Context) {
 	s, err := a.backend()
+	if a.startHidden {
+		if prepareErr := prepareHiddenWindow(ctx); prepareErr != nil {
+			runtime.Show(ctx)
+			if s != nil {
+				s.SetDesktopError(fmt.Errorf("准备隐藏启动窗口失败: %w", prepareErr))
+			}
+		}
+	}
 	if err != nil {
+		if a.startHidden {
+			a.showWindow()
+		}
 		return
 	}
 	stop, trayErr := a.startTray()
@@ -42,6 +57,9 @@ func (a *App) domReady(ctx context.Context) {
 	a.desktopMu.Unlock()
 	if trayErr != nil {
 		s.SetDesktopError(fmt.Errorf("托盘不可用，关闭窗口将退出应用: %w", trayErr))
+		if a.startHidden {
+			a.showWindow()
+		}
 	}
 	s.StartAutomatic()
 	if s.GetState().Preferences.LowQuotaNotify {

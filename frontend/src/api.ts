@@ -11,6 +11,8 @@ export interface PreviewAccount {email: string; alias: string; account_id: strin
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  GetAutoStart(): Promise<boolean>;
+  SetAutoStart(enabled: boolean): Promise<boolean>;
   GetState(): Promise<State>;
   RefreshAll(): Promise<State>;
   SetAutomaticPaused(paused: boolean): Promise<void>;

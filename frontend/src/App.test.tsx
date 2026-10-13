@@ -13,7 +13,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 0}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: new Date().toISOString(), auto_refreshing: true};
   let update!: (value: State) => void;
-  const api = {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), WakeAutomatic: vi.fn(async () => {})};
+  const api = {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), WakeAutomatic: vi.fn(async () => {}), GetAutoStart: vi.fn(async () => false)};
   vi.stubGlobal('go', {main: {App: api}});
   vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
   try {
@@ -22,7 +22,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
     await act(async () => {await vi.advanceTimersByTimeAsync(0)});
     expect(screen.getByRole('button', {name: '正在自动刷新'})).toBeTruthy();
     expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', {name: '设置'}));
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
     expect(screen.getByRole('switch', {name: '低额度通知'})).toBeTruthy();
     const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'});
     fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
@@ -54,11 +54,11 @@ it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留'
   vi.useFakeTimers();
   const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
   const save = vi.fn(async () => {});
-  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), SaveSettings: save}}});
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), SaveSettings: save}}});
   try {
     render(<App />);
     await act(async () => {await Promise.resolve()});
-    fireEvent.click(screen.getByRole('button', {name: '设置'}));
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
     const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
     fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存'})); await Promise.resolve()});
@@ -117,5 +117,57 @@ it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用�
     expect(screen.getByText('当前账号不能删除')).toBeTruthy();
     expect((screen.getByRole('button', {name: '删除'}) as HTMLButtonElement).disabled).toBe(true);
     expect(remove).not.toHaveBeenCalled();
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('自启动从系统读取，修改成功才更新开关，失败保留原状态', async () => {
+  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  let systemEnabled = false;
+  let finish!: (value: boolean) => void;
+  const get = vi.fn(async () => systemEnabled);
+  const set = vi.fn<(enabled: boolean) => Promise<boolean>>().mockImplementationOnce(() => new Promise<boolean>(resolve => {finish = resolve}));
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: get, SetAutoStart: set}}});
+  try {
+    render(<App />);
+    await act(async () => {await Promise.resolve()});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
+    const toggle = screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    await act(async () => {fireEvent.click(toggle); await Promise.resolve()});
+    expect(set).toHaveBeenCalledWith(true);
+    expect(toggle.checked).toBe(false);
+    expect(toggle.disabled).toBe(true);
+    await act(async () => {systemEnabled = true; finish(true); await Promise.resolve()});
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText('已开启开机自启动')).toBeTruthy();
+    set.mockRejectedValueOnce(new Error('系统拒绝修改启动项'));
+    await act(async () => {fireEvent.click(toggle); await Promise.resolve()});
+    expect(set).toHaveBeenLastCalledWith(false);
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText('系统拒绝修改启动项')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name: '关闭'}));
+    systemEnabled = false;
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
+    expect((screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement).checked).toBe(false);
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('读取自启动状态失败可重试，不清空设置输入', async () => {
+  const state: State = {desktop_error: '', preferences: {privacy: false, sort: '', low_quota_notify: false, low_quota_threshold: 10}, accounts: [], settings: {webdav_url: '', webdav_username: '', webdav_password: ''}, cli_store: 'file', cli_error: '', backup: {at: null, error: '', busy: false, conflict: false}, next_refresh_at: null, auto_refreshing: false};
+  const get = vi.fn<() => Promise<boolean>>().mockRejectedValueOnce(new Error('读取启动项失败')).mockResolvedValue(false);
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: get}}});
+  try {
+    render(<App />);
+    await act(async () => {await Promise.resolve()});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
+    const toggle = screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+    expect(screen.getByText('读取启动项失败')).toBeTruthy();
+    const input = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
+    fireEvent.change(input, {target: {value: 'https://example.test/backup/'}});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '重试读取'})); await Promise.resolve()});
+    expect(toggle.disabled).toBe(false);
+    expect(input.value).toBe('https://example.test/backup/');
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });

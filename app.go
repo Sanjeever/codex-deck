@@ -14,6 +14,7 @@ import (
 
 type App struct {
 	autoStartMu        sync.Mutex
+	startHidden        bool
 	desktopMu          sync.Mutex
 	stopTray           func()
 	trayReady          bool
