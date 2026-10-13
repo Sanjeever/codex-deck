@@ -32,11 +32,14 @@ type entry struct {
 }
 
 type Service struct {
-	ctx   context.Context
-	root  string
-	mu    sync.Mutex
-	files map[string]*entry
-	clock uint64
+	ctx        context.Context
+	root       string
+	mu         sync.Mutex
+	files      map[string]*entry
+	clock      uint64
+	requests   map[string]request
+	listCache  *listSnapshot
+	matchCache *matchSnapshot
 }
 
 func NewService(ctx context.Context, codexHome string) *Service {
@@ -44,7 +47,7 @@ func NewService(ctx context.Context, codexHome string) *Service {
 	if err != nil {
 		root = filepath.Join(codexHome, "sessions")
 	}
-	return &Service{ctx: ctx, root: root, files: map[string]*entry{}}
+	return &Service{ctx: ctx, root: root, files: map[string]*entry{}, requests: map[string]request{}}
 }
 
 // secureOpen rejects links and revalidates the opened identity. Callers can only
@@ -119,8 +122,8 @@ func (s *Service) label(path string) string {
 	return rel
 }
 
-func (s *Service) load(path string, needDocument bool) (*entry, *os.File, error) {
-	if err := s.ctx.Err(); err != nil {
+func (s *Service) load(ctx context.Context, path string, needDocument bool) (*entry, *os.File, error) {
+	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 	f, err := s.secureOpen(path)
@@ -133,13 +136,15 @@ func (s *Service) load(path string, needDocument bool) (*entry, *os.File, error)
 		return nil, nil, err
 	}
 	id := fmt.Sprintf("%x", sha256.Sum256([]byte(s.label(path))))
+	s.mu.Lock()
 	e := s.files[id]
+	s.mu.Unlock()
 	if e == nil || !sameVersion(e.info, info) || (needDocument && e.doc == nil) {
 		read := readSummary
 		if needDocument {
 			read = readDocument
 		}
-		d, readErr := read(s.ctx, f, s.label(path))
+		d, readErr := read(ctx, f, s.label(path))
 		if readErr != nil {
 			f.Close()
 			return nil, nil, readErr
@@ -153,34 +158,60 @@ func (s *Service) load(path string, needDocument bool) (*entry, *os.File, error)
 			f.Close()
 			return nil, nil, fmt.Errorf("会话在读取期间发生变化，请重试")
 		}
-		s.clock++
-		revision := strconv.FormatUint(s.clock, 10)
-		if e != nil && sameVersion(e.info, info) {
-			revision = e.revision
-		}
 		d.summary.ID = id
-		e = &entry{path: path, info: info, summary: d.summary, issues: d.issues, doc: d, revision: revision}
-		if !needDocument {
-			e.doc = nil
+		e = &entry{path: path, info: info, summary: d.summary, issues: d.issues}
+		if needDocument {
+			e.doc = d
 		}
-		s.files[id] = e
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	previous := s.files[id]
+	if previous != nil && sameVersion(previous.info, info) && (!needDocument || previous.doc != nil) {
+		e = previous
+	}
+	// Published entries are immutable; readers may still hold an evicted index.
+	updated := *e
 	s.clock++
-	e.used = s.clock
+	updated.used = s.clock
+	if previous != nil && sameVersion(previous.info, info) {
+		updated.revision = previous.revision
+	} else {
+		updated.revision = strconv.FormatUint(s.clock, 10)
+	}
+	e = &updated
+	s.files[id] = e
 	count := 0
-	var oldest *entry
-	for _, candidate := range s.files {
+	oldestID := ""
+	for candidateID, candidate := range s.files {
 		if candidate.doc != nil {
 			count++
-			if candidate != e && (oldest == nil || candidate.used < oldest.used) {
-				oldest = candidate
+			if candidateID != id && (oldestID == "" || candidate.used < s.files[oldestID].used) {
+				oldestID = candidateID
 			}
 		}
 	}
-	if count > cachedDocuments && oldest != nil {
-		oldest.doc = nil
+	if count > cachedDocuments && oldestID != "" {
+		evicted := *s.files[oldestID]
+		evicted.doc = nil
+		s.files[oldestID] = &evicted
 	}
 	return e, f, nil
+}
+
+type listSnapshot struct {
+	key    string
+	rows   []Summary
+	issues []Issue
+}
+
+type matchSnapshot struct {
+	key     string
+	matches []Match
 }
 
 type pageCursor struct {
@@ -221,16 +252,20 @@ func newer(a, b string) bool {
 }
 
 func (s *Service) List(query ListQuery) (ListPage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, done := s.beginRequest("list", query.RequestID)
+	defer done()
 	page := ListPage{Sessions: []Summary{}, Projects: []string{}, Dates: []string{}, Issues: []Issue{}, Source: s.root}
-	if err := s.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return page, err
 	}
 	rootInfo, err := os.Lstat(s.root)
 	if os.IsNotExist(err) {
 		page.Missing = true
+		s.mu.Lock()
 		s.files = map[string]*entry{}
+		s.listCache = nil
+		s.matchCache = nil
+		s.mu.Unlock()
 		return page, nil
 	}
 	if err != nil {
@@ -242,11 +277,11 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 	seen := map[string]bool{}
 	projects := map[string]bool{}
 	dates := map[string]bool{}
-	rows := []Summary{}
+	candidates := []*entry{}
 	revisions := []string{}
 	search := strings.TrimSpace(query.Search)
 	err = filepath.WalkDir(s.root, func(path string, d fs.DirEntry, walkErr error) error {
-		if err := s.ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if walkErr != nil {
@@ -270,8 +305,11 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 		if !strings.HasSuffix(d.Name(), ".jsonl") {
 			return nil
 		}
-		e, f, readErr := s.load(path, false)
+		e, f, readErr := s.load(ctx, path, false)
 		if readErr != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			page.Issues = append(page.Issues, Issue{File: s.label(path), Message: readErr.Error()})
 			return nil
 		}
@@ -291,43 +329,22 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 		if query.Date != "" && query.Date != localDate(e.summary.UpdatedAt) {
 			return nil
 		}
-		summary := e.summary
-		if search != "" {
-			metadata := summary.Title + "\n" + summary.Project
-			matched := strings.Contains(strings.ToLower(metadata), strings.ToLower(search))
-			if matched {
-				summary.Snippet = excerpt(metadata, search, 180)
-			}
-			d, searchErr := readMatches(s.ctx, f, s.label(path), search)
-			if searchErr != nil {
-				return searchErr
-			}
-			if err := s.unchanged(e, f); err != nil {
-				page.Issues = append(page.Issues, Issue{File: s.label(path), Message: err.Error()})
-				return nil
-			}
-			if len(d.matches) > 0 {
-				matched = true
-				match := d.matches[0]
-				summary.Snippet = match.Snippet
-				summary.MatchEventID = match.EventID
-				summary.MatchTextOffset = match.TextOffset
-			}
-			if !matched {
-				return nil
-			}
-		}
-		rows = append(rows, summary)
+		candidates = append(candidates, e)
 		return nil
 	})
 	if err != nil {
 		return page, err
 	}
+	if err := ctx.Err(); err != nil {
+		return page, err
+	}
+	s.mu.Lock()
 	for id := range s.files {
 		if !seen[id] {
 			delete(s.files, id)
 		}
 	}
+	s.mu.Unlock()
 	for project := range projects {
 		page.Projects = append(page.Projects, project)
 	}
@@ -336,14 +353,62 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 		page.Dates = append(page.Dates, date)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(page.Dates)))
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].UpdatedAt == rows[j].UpdatedAt {
-			return rows[i].ID < rows[j].ID
-		}
-		return newer(rows[i].UpdatedAt, rows[j].UpdatedAt)
-	})
 	sort.Strings(revisions)
 	pageKey := key(query.Search, query.Project, query.Date, strings.Join(revisions, ","))
+	s.mu.Lock()
+	cached := s.listCache
+	s.mu.Unlock()
+	if cached == nil || cached.key != pageKey {
+		cached = &listSnapshot{key: pageKey, rows: []Summary{}, issues: []Issue{}}
+		for _, e := range candidates {
+			if err := ctx.Err(); err != nil {
+				return page, err
+			}
+			summary := e.summary
+			if search != "" {
+				metadata := summary.Title + "\n" + summary.Project
+				matched := strings.Contains(strings.ToLower(metadata), strings.ToLower(search))
+				if matched {
+					summary.Snippet = excerpt(metadata, search, 180)
+				}
+				d, searchErr := s.searchFile(ctx, e, search)
+				if searchErr != nil {
+					if err := ctx.Err(); err != nil {
+						return page, err
+					}
+					cached.issues = append(cached.issues, Issue{File: s.label(e.path), Message: searchErr.Error()})
+					continue
+				}
+				if len(d.matches) > 0 {
+					matched = true
+					match := d.matches[0]
+					summary.Snippet = match.Snippet
+					summary.MatchEventID = match.EventID
+					summary.MatchTextOffset = match.TextOffset
+				}
+				if !matched {
+					continue
+				}
+			}
+			cached.rows = append(cached.rows, summary)
+		}
+		sort.Slice(cached.rows, func(i, j int) bool {
+			if cached.rows[i].UpdatedAt == cached.rows[j].UpdatedAt {
+				return cached.rows[i].ID < cached.rows[j].ID
+			}
+			return newer(cached.rows[i].UpdatedAt, cached.rows[j].UpdatedAt)
+		})
+		s.mu.Lock()
+		if ctx.Err() == nil && len(cached.issues) == 0 {
+			s.listCache = cached
+		}
+		s.mu.Unlock()
+	}
+	if err := ctx.Err(); err != nil {
+		return page, err
+	}
+	page.Issues = append(page.Issues, cached.issues...)
+	rows := cached.rows
 	start, err := parseCursor(query.Cursor, pageKey, len(rows))
 	if err != nil {
 		return page, err
@@ -356,12 +421,14 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 	return page, nil
 }
 
-func (s *Service) session(id string) (*entry, *os.File, error) {
+func (s *Service) session(ctx context.Context, id string, needDocument bool) (*entry, *os.File, error) {
+	s.mu.Lock()
 	e := s.files[id]
+	s.mu.Unlock()
 	if e == nil {
 		return nil, nil, fmt.Errorf("会话未找到，请刷新列表后重试")
 	}
-	return s.load(e.path, true)
+	return s.load(ctx, e.path, needDocument)
 }
 func filtered(event Event, filter string) bool {
 	switch filter {
@@ -375,13 +442,13 @@ func filtered(event Event, filter string) bool {
 }
 
 func (s *Service) Read(query ReadQuery) (ReadPage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, done := s.beginRequest("detail", query.RequestID)
+	defer done()
 	page := ReadPage{Events: []Event{}, Turns: []Turn{}, Issues: []Issue{}}
 	if query.Filter != "" && query.Filter != "all" && query.Filter != "chat" && query.Filter != "error" {
 		return page, fmt.Errorf("未知事件筛选")
 	}
-	e, f, err := s.session(query.ID)
+	e, f, err := s.session(ctx, query.ID, true)
 	if err != nil {
 		return page, err
 	}
@@ -416,7 +483,7 @@ func (s *Service) Read(query ReadQuery) (ReadPage, error) {
 	}
 	end := min(start+eventPageSize, len(indices))
 	for _, index := range indices[start:end] {
-		if err := s.ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return page, err
 		}
 		event := e.doc.events[index]
@@ -453,14 +520,10 @@ func (s *Service) unchanged(e *entry, f *os.File) error {
 }
 
 func (s *Service) Find(query MatchQuery) (MatchPage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, done := s.beginRequest("find", query.RequestID)
+	defer done()
 	page := MatchPage{Matches: []Match{}, Issues: []Issue{}}
-	e := s.files[query.ID]
-	if e == nil {
-		return page, fmt.Errorf("会话未找到，请刷新列表后重试")
-	}
-	e, f, err := s.load(e.path, false)
+	e, f, err := s.session(ctx, query.ID, false)
 	if err != nil {
 		return page, err
 	}
@@ -470,27 +533,43 @@ func (s *Service) Find(query MatchQuery) (MatchPage, error) {
 	if search == "" {
 		return page, nil
 	}
-	d, err := readMatches(s.ctx, f, s.label(e.path), search)
-	if err != nil {
-		return page, err
-	}
 	pageKey := key(query.ID, e.revision, search)
-	start, err := parseCursor(query.Cursor, pageKey, len(d.matches))
+	s.mu.Lock()
+	cached := s.matchCache
+	s.mu.Unlock()
+	if cached == nil || cached.key != pageKey {
+		d, readErr := readMatches(ctx, f, s.label(e.path), search)
+		if readErr != nil {
+			return page, readErr
+		}
+		if err := s.unchanged(e, f); err != nil {
+			return page, err
+		}
+		cached = &matchSnapshot{key: pageKey, matches: d.matches}
+		s.mu.Lock()
+		if ctx.Err() == nil {
+			s.matchCache = cached
+		}
+		s.mu.Unlock()
+	}
+	if err := ctx.Err(); err != nil {
+		return page, err
+	}
+	start, err := parseCursor(query.Cursor, pageKey, len(cached.matches))
 	if err != nil {
 		return page, err
 	}
-	end := min(start+matchPageSize, len(d.matches))
-	page.Matches = d.matches[start:end]
-	if end < len(d.matches) {
+	end := min(start+matchPageSize, len(cached.matches))
+	page.Matches = cached.matches[start:end]
+	if end < len(cached.matches) {
 		page.NextCursor = cursor(pageKey, end)
 	}
 	return page, s.unchanged(e, f)
 }
 
 func (s *Service) ReadText(query TextQuery) (TextPage, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, f, err := s.session(query.ID)
+	ctx := s.ctx
+	e, f, err := s.session(ctx, query.ID, true)
 	if err != nil {
 		return TextPage{}, err
 	}
@@ -512,4 +591,20 @@ func (s *Service) ReadText(query TextQuery) (TextPage, error) {
 		}
 	}
 	return TextPage{}, fmt.Errorf("事件未找到")
+}
+
+func (s *Service) searchFile(ctx context.Context, e *entry, search string) (*document, error) {
+	f, err := s.secureOpen(e.path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if err := s.unchanged(e, f); err != nil {
+		return nil, err
+	}
+	d, err := readMatches(ctx, f, s.label(e.path), search)
+	if err != nil {
+		return nil, err
+	}
+	return d, s.unchanged(e, f)
 }

@@ -2,10 +2,12 @@ package sessions
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -166,4 +168,104 @@ func TestNewestOrderAndInvalidCursor(t *testing.T) {
 	if _, err = closed.List(ListQuery{}); err != context.Canceled {
 		t.Fatal(err)
 	}
+}
+
+func TestCanceledAndSupersededRequestsStayIndependent(t *testing.T) {
+	s, root := newFixtureService(t)
+	fixture(t, filepath.Join(root, "s.jsonl"), meta("s", "/p")+user("request"))
+	list, finishList := s.beginRequest("list", 1)
+	defer finishList()
+	detail, finishDetail := s.beginRequest("detail", 1)
+	defer finishDetail()
+	newList, finishNewList := s.beginRequest("list", 2)
+	defer finishNewList()
+	if list.Err() != context.Canceled || detail.Err() != nil || newList.Err() != nil {
+		t.Fatal("superseding a search canceled a detail request")
+	}
+	if err := s.CancelRequest("list", 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.List(ListQuery{RequestID: 3}); err != context.Canceled {
+		t.Fatalf("a late canceled bridge call still ran: %v", err)
+	}
+	page, err := s.List(ListQuery{RequestID: 4})
+	if err != nil || len(page.Sessions) != 1 {
+		t.Fatalf("new request did not recover: %+v %v", page, err)
+	}
+	if err := s.CancelRequest("list", 2); err != nil || detail.Err() != nil {
+		t.Fatal("late cancellation affected another scope")
+	}
+}
+
+func TestSearchPagesReuseResultsAndInvalidateOnChanges(t *testing.T) {
+	s, root := newFixtureService(t)
+	for i := 0; i < listPageSize+1; i++ {
+		fixture(t, filepath.Join(root, fmt.Sprintf("%d.jsonl", i)), meta(fmt.Sprint(i), "/p")+user("needle"))
+	}
+	page, err := s.List(ListQuery{Search: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := s.listCache
+	next, err := s.List(ListQuery{Search: "needle", Cursor: page.NextCursor})
+	if err != nil || len(next.Sessions) != 1 || s.listCache != cached {
+		t.Fatalf("search pagination did not reuse the snapshot: %+v %v", next, err)
+	}
+	path := filepath.Join(root, "0.jsonl")
+	data := meta("0", "/p") + strings.Repeat(user("needle"), matchPageSize+1)
+	fixture(t, path, data)
+	page, err = s.List(ListQuery{Search: "needle"})
+	if err != nil || s.listCache == cached {
+		t.Fatal("changed rollout did not invalidate list search")
+	}
+	id := fmt.Sprintf("%x", sha256.Sum256([]byte("0.jsonl")))
+	matches, err := s.Find(MatchQuery{ID: id, Search: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findCache := s.matchCache
+	more, err := s.Find(MatchQuery{ID: id, Search: "needle", Cursor: matches.NextCursor})
+	if err != nil || len(more.Matches) != 1 || s.matchCache != findCache {
+		t.Fatalf("find pagination did not reuse full-file results: %+v %v", more, err)
+	}
+	fixture(t, path, meta("0", "/p")+user("changed"))
+	if _, err := s.Find(MatchQuery{ID: id, Search: "needle", Cursor: matches.NextCursor}); err == nil {
+		t.Fatal("a cursor from the old file was accepted")
+	}
+}
+
+func TestConcurrentSearchAndDetailReads(t *testing.T) {
+	s, root := newFixtureService(t)
+	for i := 0; i < cachedDocuments+4; i++ {
+		fixture(t, filepath.Join(root, fmt.Sprintf("%d.jsonl", i)), meta(fmt.Sprint(i), "/p")+user("needle"))
+	}
+	list, err := s.List(ListQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	for _, summary := range list.Sessions {
+		workers.Add(1)
+		go func(id string) {
+			defer workers.Done()
+			page, err := s.Read(ReadQuery{ID: id})
+			if err != nil || len(page.Events) != 1 {
+				t.Errorf("concurrent detail: %+v %v", page, err)
+				return
+			}
+			matches, err := s.Find(MatchQuery{ID: id, Search: "needle"})
+			if err != nil || len(matches.Matches) != 1 {
+				t.Errorf("concurrent find: %+v %v", matches, err)
+			}
+			text, err := s.ReadText(TextQuery{ID: id, EventID: page.Events[0].ID, Revision: page.Revision})
+			if err != nil || text.Text != "needle" {
+				t.Errorf("evicted detail changed its revision: %+v %v", text, err)
+			}
+		}(summary.ID)
+	}
+	searched, err := s.List(ListQuery{Search: "needle"})
+	if err != nil || len(searched.Sessions) != len(list.Sessions) {
+		t.Errorf("concurrent list: %+v %v", searched, err)
+	}
+	workers.Wait()
 }

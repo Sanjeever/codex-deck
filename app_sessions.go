@@ -36,6 +36,13 @@ func (a *App) FindSessionMatches(query sessions.MatchQuery) (sessions.MatchPage,
 	}
 	return s.Find(query)
 }
+func (a *App) CancelSessionRequest(scope string, requestID uint64) error {
+	s, err := a.sessionReader()
+	if err != nil {
+		return err
+	}
+	return s.CancelRequest(scope, requestID)
+}
 func (a *App) ReadSessionText(query sessions.TextQuery) (sessions.TextPage, error) {
 	s, err := a.sessionReader()
 	if err != nil {

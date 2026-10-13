@@ -38,10 +38,11 @@ type Turn struct {
 }
 
 type ListQuery struct {
-	Search  string `json:"search"`
-	Project string `json:"project"`
-	Date    string `json:"date"`
-	Cursor  string `json:"cursor"`
+	RequestID uint64 `json:"request_id,omitempty"`
+	Search    string `json:"search"`
+	Project   string `json:"project"`
+	Date      string `json:"date"`
+	Cursor    string `json:"cursor"`
 }
 
 type ListPage struct {
@@ -55,10 +56,11 @@ type ListPage struct {
 }
 
 type ReadQuery struct {
-	ID      string `json:"id"`
-	Cursor  string `json:"cursor"`
-	EventID string `json:"event_id"`
-	Filter  string `json:"filter"`
+	RequestID uint64 `json:"request_id,omitempty"`
+	ID        string `json:"id"`
+	Cursor    string `json:"cursor"`
+	EventID   string `json:"event_id"`
+	Filter    string `json:"filter"`
 }
 
 type ReadPage struct {
@@ -78,9 +80,10 @@ type Match struct {
 }
 
 type MatchQuery struct {
-	ID     string `json:"id"`
-	Search string `json:"search"`
-	Cursor string `json:"cursor"`
+	RequestID uint64 `json:"request_id,omitempty"`
+	ID        string `json:"id"`
+	Search    string `json:"search"`
+	Cursor    string `json:"cursor"`
 }
 
 type MatchPage struct {
