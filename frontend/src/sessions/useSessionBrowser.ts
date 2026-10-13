@@ -22,7 +22,8 @@ export function useSessionBrowser(active: boolean) {
   const listRequest = useRef(0);
   const [selected, setSelected] = useState<SessionSummary | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('chat');
+  const [selectedSearch, setSelectedSearch] = useState('');
   const [target, setTarget] = useState<{event_id: string; text_offset: number} | null>(null);
   const [detail, setDetail] = useState<DisplayPage | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -96,7 +97,7 @@ export function useSessionBrowser(active: boolean) {
     // Cursor updates must not reload the first page.
   }, [active, id, filter, initialEvent, initialOffset, refreshVersion, target]);
 
-  const select = (session: SessionSummary) => {setSelected(session); setFilter('all'); setTarget(null); setMobileDetail(true)};
+  const select = (session: SessionSummary) => {setSelected(session); setSelectedSearch(listSearch); setFilter(session.match_event_id ? 'all' : 'chat'); setTarget(null); setMobileDetail(true)};
   const focusSearch = () => {setMobileDetail(false); requestAnimationFrame(() => searchRef.current?.focus())};
   const refresh = () => setRefreshVersion(value => value + 1);
   const jump = (match: Pick<SessionMatch, 'event_id' | 'text_offset'>) => {
@@ -104,7 +105,7 @@ export function useSessionBrowser(active: boolean) {
     setFilter('all'); setTarget(match);
   };
   return {searchRef, search, setSearch, project, setProject, date, setDate, list, listSearch, listLoading, listError, loadList, refresh, refreshVersion,
-    selected, select, mobileDetail, setMobileDetail, focusSearch, filter, setFilter, detail, detailLoading, detailError, loadDetail, jump};
+    selected, selectedSearch, select, focusEventID: filter === 'all' ? target?.event_id ?? initialEvent : '', mobileDetail, setMobileDetail, focusSearch, filter, setFilter, detail, detailLoading, detailError, loadDetail, jump};
 }
 
 export type SessionBrowserController = ReturnType<typeof useSessionBrowser>;

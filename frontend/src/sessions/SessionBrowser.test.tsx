@@ -24,14 +24,15 @@ afterEach(() => {cleanup(); vi.useRealTimers()});
 
 it('由真实请求展示来源、选择详情、筛选和后续分页', async () => {
   api.ListSessions.mockResolvedValueOnce({...listPage(), next_cursor: 'next-list'}).mockResolvedValueOnce(listPage([summary('two')]));
-  api.ReadSession.mockResolvedValueOnce({...detailPage(), next_cursor: 'next-events'}).mockResolvedValueOnce(detailPage('one', [event('e2', '失败输出', 'tool')]));
+  api.ReadSession.mockResolvedValueOnce({...detailPage(), next_cursor: 'next-events'}).mockResolvedValueOnce(detailPage('one', [event('e2', '后续回复', 'assistant')]));
   render(<Harness />); await flush();
   expect(screen.getByText('D:/isolated/sessions')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
   expect(screen.getByText('用户正文')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name: '加载后续记录'})); await flush();
   expect(api.ReadSession.mock.calls[1][0].cursor).toBe('next-events');
-  expect(screen.getByText('状态未知')).toBeTruthy();
+  expect(screen.getByText('后续回复')).toBeTruthy();
+  expect(api.ReadSession.mock.calls[0][0].filter).toBe('chat');
   fireEvent.click(screen.getByRole('button', {name: '加载更多会话'})); await flush();
   expect(api.ListSessions.mock.calls[1][0].cursor).toBe('next-list');
   expect(screen.getByRole('button', {name: /请求 two/})).toBeTruthy();
@@ -49,6 +50,7 @@ it('空目录、无结果、部分不可读和错误重试不伪造数据或清�
   expect(screen.getByText('会话目录不存在')).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox', {name: '搜索全部会话'}), {target: {value: 'needle'}}); await flush(300);
   expect(screen.getByText('没有匹配的会话')).toBeTruthy();
+  fireEvent.click(screen.getByText('读取提示 · 1 项')); await flush();
   expect(screen.getByText('broken.jsonl:3 · JSON 损坏')).toBeTruthy();
   expect((screen.getByRole('textbox', {name: '搜索全部会话'}) as HTMLInputElement).value).toBe('needle');
 });
@@ -74,8 +76,10 @@ it('会话内查找和轮次跳转可读取尚未展示的事件及长输出匹�
   api.ReadSession.mockImplementation(async query => detailPage(query.id, [event(query.event_id || 'e1', query.event_id ? 'before needle' : '用户正文')]));
   api.ReadSessionText.mockResolvedValue({text: '片段 needle', next_offset: 10000});
   render(<Harness />); await flush(); fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
-  fireEvent.change(screen.getByRole('combobox', {name: '跳到对话轮次'}), {target: {value: 'later'}}); await flush();
+  fireEvent.click(screen.getByRole('button', {name: '跳到对话轮次'})); await flush();
+  fireEvent.click(screen.getByRole('menuitem', {name: '第 2 轮'})); await flush();
   expect(api.ReadSession.mock.calls.at(-1)?.[0].event_id).toBe('later');
+  fireEvent.click(screen.getByRole('button', {name: '查找'})); await flush();
   fireEvent.change(screen.getByRole('textbox', {name: '查找当前会话'}), {target: {value: 'needle'}}); await flush(300);
   expect(api.FindSessionMatches).toHaveBeenCalledWith(expect.objectContaining({id: 'one', search: 'needle', cursor: ''}));
   fireEvent.click(screen.getByRole('button', {name: '下一个匹配事件'})); await flush();
@@ -107,6 +111,7 @@ it('工具默认折叠、未知状态准确，分段失败可显式重试', asyn
   api.ReadSession.mockResolvedValue(detailPage('one', [{...event('tool', '原始工具输出', 'tool'), name: 'tool', status: 'unknown', text_cursor: 8192}]));
   api.ReadSessionText.mockRejectedValueOnce(new Error('文件已变化')).mockResolvedValue({text: '下一段真实输出', next_offset: 0});
   const {container} = render(<Harness />); await flush(); fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  fireEvent.click(screen.getByRole('button', {name: '全部记录'})); await flush();
   const details = container.querySelector('.session-tool-event details') as HTMLDetailsElement;
   expect(details.open).toBe(false); expect(screen.getByText('状态未知')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name: '展开工具'})); await flush(); expect(details.open).toBe(true);
@@ -145,4 +150,39 @@ it('输入变化和切换工作区会取消仍在执行的后端请求', async (
   const detailRequest = api.ReadSession.mock.calls[0][0].request_id;
   rerender(<Harness active={false} />); await flush();
   expect(api.CancelSessionRequest).toHaveBeenCalledWith('detail', detailRequest);
+});
+
+it('默认只读对话，统计与查找按需展开，连续工具按组折叠', async () => {
+  const tool = (id: string, status: string) => ({...event(id, `工具参数 ${id}`, 'tool'), name: 'exec_command', status});
+  api.ReadSession.mockImplementation(async query => detailPage(query.id, query.filter === 'chat' ? [event()] : [event(), tool('t1', 'success'), tool('t2', 'error'), {...event('notice', '实际摘要', 'notice'), name: '上下文压缩'}, tool('t3', 'unknown')]));
+  const {container} = render(<Harness />); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  expect(screen.getByRole('button', {name: '对话'}).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByText('recorded-model')).toBeNull();
+  expect(screen.queryByRole('textbox', {name: '查找当前会话'})).toBeNull();
+  expect(container.querySelector('.session-tool-group')).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: '会话信息'})); await flush();
+  expect(screen.getByText('recorded-model')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name: '查找'})); await flush();
+  expect(screen.getByRole('textbox', {name: '查找当前会话'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name: '全部记录'})); await flush();
+  expect(container.querySelectorAll('.session-tool-group').length).toBe(2);
+  expect(screen.getByText('1 次失败')).toBeTruthy();
+  expect(screen.queryByText('工具参数 t1')).toBeNull();
+  expect(screen.queryByText('实际摘要')).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: '展开工具'})); await flush();
+  expect(screen.getByText('工具参数 t1')).toBeTruthy();
+  expect(screen.getByText('状态未知')).toBeTruthy();
+  expect(screen.queryByText('实际摘要')).toBeNull();
+});
+
+it('同名项目显示父目录，完整路径和读取问题仍可查看', async () => {
+  api.ListSessions.mockResolvedValue({...listPage([{...summary(), project: '/work/frontend/app'}, {...summary('two'), project: 'D:/work/backend/app'}]), projects: ['/work/frontend/app', 'D:/work/backend/app'], issues: [{file: 'broken.jsonl', line: 3, message: 'JSON 损坏'}]});
+  render(<Harness />); await flush();
+  const list = within(screen.getByRole('region', {name: '会话列表'}));
+  expect(list.getByTitle('/work/frontend/app').textContent).toBe('frontend/app');
+  expect(list.getByTitle('D:/work/backend/app').textContent).toBe('backend/app');
+  expect(screen.queryByText('broken.jsonl:3 · JSON 损坏')).toBeNull();
+  fireEvent.click(screen.getByText('读取提示 · 1 项')); await flush();
+  expect(screen.getByText('broken.jsonl:3 · JSON 损坏')).toBeTruthy();
 });
