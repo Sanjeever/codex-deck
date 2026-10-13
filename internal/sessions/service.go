@@ -135,7 +135,11 @@ func (s *Service) load(path string, needDocument bool) (*entry, *os.File, error)
 	id := fmt.Sprintf("%x", sha256.Sum256([]byte(s.label(path))))
 	e := s.files[id]
 	if e == nil || !sameVersion(e.info, info) || (needDocument && e.doc == nil) {
-		d, readErr := readDocument(s.ctx, f, s.label(path))
+		read := readSummary
+		if needDocument {
+			read = readDocument
+		}
+		d, readErr := read(s.ctx, f, s.label(path))
 		if readErr != nil {
 			f.Close()
 			return nil, nil, readErr
@@ -156,6 +160,9 @@ func (s *Service) load(path string, needDocument bool) (*entry, *os.File, error)
 		}
 		d.summary.ID = id
 		e = &entry{path: path, info: info, summary: d.summary, issues: d.issues, doc: d, revision: revision}
+		if !needDocument {
+			e.doc = nil
+		}
 		s.files[id] = e
 	}
 	s.clock++

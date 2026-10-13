@@ -51,12 +51,13 @@ func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, 
 	reader := bufio.NewReaderSize(f, 64<<10)
 	var offset int64
 	line := 0
+	data := make([]byte, 0, 4096)
 	for {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
 		start := offset
-		data := make([]byte, 0, 4096)
+		data = data[:0]
 		tooLarge := false
 		var err error
 		for {
@@ -107,161 +108,207 @@ func walkRecords(ctx context.Context, f *os.File, visit func(record, sourceRef, 
 }
 
 func readDocument(ctx context.Context, f *os.File, file string) (*document, error) {
-	d := &document{summary: Summary{Models: []string{}}, issues: []Issue{}, events: []indexedEvent{}, turns: []Turn{}}
-	issue := func(line int, message string) {
-		d.issues = append(d.issues, Issue{File: file, Line: line, Message: message})
+	return readRollout(ctx, f, file, true)
+}
+
+func readSummary(ctx context.Context, f *os.File, file string) (*document, error) {
+	return readRollout(ctx, f, file, false)
+}
+
+type toolCall struct {
+	index   int
+	name    string
+	sources int
+}
+
+type messageIdentity struct {
+	hash   [32]byte
+	source string
+}
+
+type rolloutBuilder struct {
+	d            *document
+	file         string
+	index        bool
+	userItems    bool
+	calls        map[string]toolCall
+	turnIDs      map[string]int
+	turn         int
+	activeTurnID string
+	lastMessages map[string]messageIdentity
+}
+
+func newRolloutBuilder(file string, index, userItems bool) *rolloutBuilder {
+	return &rolloutBuilder{
+		d:    &document{summary: Summary{Models: []string{}}, issues: []Issue{}, events: []indexedEvent{}, turns: []Turn{}},
+		file: file, index: index, userItems: userItems,
+		calls: map[string]toolCall{}, turnIDs: map[string]int{}, lastMessages: map[string]messageIdentity{},
 	}
-	// Canonical user events omit the model-visible environment and instruction messages.
-	hasUserEvents := false
-	_, err := walkRecords(ctx, f, func(r record, _ sourceRef, _ int) error {
-		p := object(r.Payload)
-		if r.Type == "event_msg" && (str(p, "type") == "user_message" || (str(p, "type") == "item_completed" && str(object(p["item"]), "type") == "UserMessage")) {
-			hasUserEvents = true
-		}
-		return nil
-	}, func(int, string) {})
-	if err != nil {
-		return nil, err
-	}
-	calls := map[string]int{}
-	turnIDs := map[string]int{}
-	turn := 0
-	activeTurnID := ""
-	lastMessages := map[string]struct {
-		hash   [32]byte
-		source string
-	}{}
+}
+
+func (b *rolloutBuilder) issue(line int, message string) {
+	b.d.issues = append(b.d.issues, Issue{File: b.file, Line: line, Message: message})
+}
+
+// Keep both user-message interpretations only until the first canonical user
+// event. This avoids a second file scan and keeps instruction items out of chat.
+func readRollout(ctx context.Context, f *os.File, file string, index bool) (*document, error) {
+	canonical := newRolloutBuilder(file, index, false)
+	fallback := newRolloutBuilder(file, index, true)
 	pending, err := walkRecords(ctx, f, func(r record, ref sourceRef, line int) error {
 		p := object(r.Payload)
 		if p == nil {
-			issue(line, "payload 必须是对象")
-			return nil
-		}
-		timestamp := validTime(r.Timestamp)
-		if r.Timestamp != "" && timestamp == "" {
-			issue(line, "记录时间格式不可识别")
-		}
-		if newer(timestamp, d.summary.UpdatedAt) {
-			d.summary.UpdatedAt = timestamp
-		}
-		switch r.Type {
-		case "session_meta":
-			if d.summary.ID == "" {
-				d.summary.ID = str(p, "id")
-				d.summary.Project = str(p, "cwd")
-				d.summary.CreatedAt = validTime(str(p, "timestamp"))
-				if len(p["history_base"]) > 0 && string(p["history_base"]) != "null" {
-					issue(line, "此会话引用继承历史；当前只展示本文件记录")
-				}
+			canonical.issue(line, "payload 必须是对象")
+			if fallback != nil {
+				fallback.issue(line, "payload 必须是对象")
 			}
 			return nil
-		case "turn_context":
-			if model := str(p, "model"); model != "" && !contains(d.summary.Models, model) {
-				d.summary.Models = append(d.summary.Models, model)
+		}
+		if r.Type == "event_msg" && (str(p, "type") == "user_message" || (str(p, "type") == "item_completed" && str(object(p["item"]), "type") == "UserMessage")) {
+			fallback = nil
+		}
+		kind, name, text, callID, status, output := normalizePayload(r, p)
+		canonical.consume(r, p, ref, line, kind, name, text, callID, status, output)
+		if fallback != nil {
+			fallback.consume(r, p, ref, line, kind, name, text, callID, status, output)
+		}
+		return nil
+	}, func(line int, message string) {
+		canonical.issue(line, message)
+		if fallback != nil {
+			fallback.issue(line, message)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	b := canonical
+	if fallback != nil {
+		b = fallback
+	}
+	b.d.pending = pending
+	if pending {
+		b.issue(0, "末尾记录尚未写完；已展示此前完整记录，刷新可重新读取")
+	}
+	if b.d.summary.ID == "" {
+		return nil, fmt.Errorf("缺少可识别的 session_meta.id")
+	}
+	b.d.summary.TurnCount = len(b.d.turns)
+	if !index {
+		b.d.turns = nil
+	}
+	return b.d, nil
+}
+
+func (b *rolloutBuilder) consume(r record, p map[string]json.RawMessage, ref sourceRef, line int, kind, name, text, callID, status string, output bool) {
+	d := b.d
+	timestamp := validTime(r.Timestamp)
+	if r.Timestamp != "" && timestamp == "" {
+		b.issue(line, "记录时间格式不可识别")
+	}
+	if newer(timestamp, d.summary.UpdatedAt) {
+		d.summary.UpdatedAt = timestamp
+	}
+	switch r.Type {
+	case "session_meta":
+		if d.summary.ID == "" {
+			d.summary.ID = str(p, "id")
+			d.summary.Project = str(p, "cwd")
+			d.summary.CreatedAt = validTime(str(p, "timestamp"))
+			if len(p["history_base"]) > 0 && string(p["history_base"]) != "null" {
+				b.issue(line, "此会话引用继承历史；当前只展示本文件记录")
 			}
-			activeTurnID = str(p, "turn_id")
-			return nil
 		}
-		kind, name, text, callID, status, output := normalize(r)
-		if kind == "" {
-			return nil
+		return
+	case "turn_context":
+		if model := str(p, "model"); model != "" && !contains(d.summary.Models, model) {
+			d.summary.Models = append(d.summary.Models, model)
 		}
-		if (kind == "user" || kind == "assistant") && text == "" {
-			issue(line, "消息未记录可展示文本")
+		b.activeTurnID = str(p, "turn_id")
+		return
+	}
+	if kind == "" {
+		return
+	}
+	if r.Type == "response_item" && str(p, "role") == "user" && !b.userItems {
+		return
+	}
+	if (kind == "user" || kind == "assistant") && text == "" {
+		b.issue(line, "消息未记录可展示文本")
+	}
+	if r.Type == "event_msg" {
+		if id := str(p, "turn_id"); id != "" {
+			b.activeTurnID = id
 		}
-		if r.Type == "response_item" && str(p, "role") == "user" && hasUserEvents {
-			return nil
+	}
+	if r.Type == "event_msg" && str(p, "type") == "item_completed" && kind == "tool" && callID != "" {
+		if _, exists := b.calls[callID]; exists {
+			output = true
 		}
-		if r.Type == "event_msg" {
-			if id := str(p, "turn_id"); id != "" {
-				activeTurnID = id
-			}
+	}
+	if kind == "user" || kind == "assistant" {
+		hash := sha256.Sum256([]byte(text))
+		last := b.lastMessages[kind]
+		if last.hash == hash && last.source != r.Type {
+			return
 		}
-		if r.Type == "event_msg" && str(p, "type") == "item_completed" && kind == "tool" && callID != "" {
-			if _, exists := calls[callID]; exists {
-				output = true
-			}
-		}
-		if kind == "user" || kind == "assistant" {
-			hash := sha256.Sum256([]byte(text))
-			last := lastMessages[kind]
-			if last.hash == hash && last.source != r.Type {
-				return nil
-			}
-			lastMessages[kind] = struct {
-				hash   [32]byte
-				source string
-			}{hash, r.Type}
-		}
-		if output && callID != "" {
-			index, ok := calls[callID]
-			if ok && len(d.events[index].sources) >= 2 && r.Type == "response_item" {
-				issue(line, "同一工具调用记录了额外结果，保留为独立事件")
-			} else if ok {
-				e := &d.events[index]
+		b.lastMessages[kind] = messageIdentity{hash, r.Type}
+	}
+	if output && callID != "" {
+		call, ok := b.calls[callID]
+		if ok && call.sources >= 2 && r.Type == "response_item" {
+			b.issue(line, "同一工具调用记录了额外结果，保留为独立事件")
+		} else if ok {
+			if b.index {
+				e := &d.events[call.index]
 				if status == "unknown" {
-					status = shellResultStatus(e.Name, text)
+					status = shellResultStatus(call.name, text)
 				}
-				// Paginated rollouts can persist both the raw result and the UI
-				// completion item. Keep a single call at its original position.
-				if len(e.sources) < 2 {
+				if call.sources < 2 {
 					e.sources = append(e.sources, ref)
 				}
 				if status != "unknown" {
 					e.Status = status
 				}
-				return nil
 			}
-			if !ok {
-				issue(line, "工具结果缺少对应调用，保留独立结果")
-			}
+			call.sources = 2
+			b.calls[callID] = call
+			return
 		}
-		if kind == "user" {
-			if number, ok := turnIDs[activeTurnID]; activeTurnID != "" && ok {
-				turn = number
-			} else {
-				turn = len(d.turns) + 1
-				if activeTurnID != "" {
-					turnIDs[activeTurnID] = turn
-				}
-			}
-			if d.summary.Title == "" {
-				d.summary.Title = excerpt(text, "", 120)
-			}
-			lastMessages["assistant"] = struct {
-				hash   [32]byte
-				source string
-			}{}
+		if !ok {
+			b.issue(line, "工具结果缺少对应调用，保留独立结果")
 		}
-		id := "line-" + strconv.FormatInt(ref.offset, 10)
-		if turn > 0 && (len(d.turns) == 0 || d.turns[len(d.turns)-1].Number != turn) {
-			d.turns = append(d.turns, Turn{Number: turn, EventID: id})
-		}
-		e := indexedEvent{Event: Event{ID: id, Turn: turn, Kind: kind, Time: timestamp, Name: name, Status: status}, sources: []sourceRef{ref}}
-		if kind == "tool" && !output {
-			d.summary.ToolCount++
-			if callID != "" {
-				calls[callID] = len(d.events)
-			}
-		}
-		if kind == "unknown" {
-			issue(line, "未支持的事件："+name)
-		}
-		d.events = append(d.events, e)
-		return nil
-	}, issue)
-	if err != nil {
-		return nil, err
 	}
-	d.pending = pending
-	if pending {
-		issue(0, "末尾记录尚未写完；已展示此前完整记录，刷新可重新读取")
+	if kind == "user" {
+		if number, ok := b.turnIDs[b.activeTurnID]; b.activeTurnID != "" && ok {
+			b.turn = number
+		} else {
+			b.turn = len(d.turns) + 1
+			if b.activeTurnID != "" {
+				b.turnIDs[b.activeTurnID] = b.turn
+			}
+		}
+		if d.summary.Title == "" {
+			d.summary.Title = excerpt(text, "", 120)
+		}
+		b.lastMessages["assistant"] = messageIdentity{}
 	}
-	if d.summary.ID == "" {
-		return nil, fmt.Errorf("缺少可识别的 session_meta.id")
+	id := "line-" + strconv.FormatInt(ref.offset, 10)
+	if b.turn > 0 && (len(d.turns) == 0 || d.turns[len(d.turns)-1].Number != b.turn) {
+		d.turns = append(d.turns, Turn{Number: b.turn, EventID: id})
 	}
-	d.summary.TurnCount = len(d.turns)
-	return d, nil
+	if kind == "tool" && !output {
+		d.summary.ToolCount++
+		if callID != "" {
+			b.calls[callID] = toolCall{index: len(d.events), name: name, sources: 1}
+		}
+	}
+	if kind == "unknown" {
+		b.issue(line, "未支持的事件："+name)
+	}
+	if b.index {
+		d.events = append(d.events, indexedEvent{Event: Event{ID: id, Turn: b.turn, Kind: kind, Time: timestamp, Name: name, Status: status}, sources: []sourceRef{ref}})
+	}
 }
 
 func object(raw json.RawMessage) map[string]json.RawMessage {
@@ -313,7 +360,10 @@ func contentText(raw json.RawMessage) string {
 // normalize extracts only persisted text. Encrypted reasoning and model-only
 // instructions are never presented as a user request or invisible reasoning.
 func normalize(r record) (kind, name, text, callID, status string, output bool) {
-	p := object(r.Payload)
+	return normalizePayload(r, object(r.Payload))
+}
+
+func normalizePayload(r record, p map[string]json.RawMessage) (kind, name, text, callID, status string, output bool) {
 	typ := str(p, "type")
 	status = "unknown"
 	if r.Type == "compacted" {

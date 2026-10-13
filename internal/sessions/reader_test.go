@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -151,5 +152,67 @@ func TestRawAndCompletedToolAreShownOnce(t *testing.T) {
 	text, err := eventText(f, d.events[1])
 	if err != nil || strings.Count(text, "failed") != 1 {
 		t.Fatalf("duplicate output: %q %v", text, err)
+	}
+}
+
+func TestSinglePassUserSourceSelection(t *testing.T) {
+	instructions := response("message", map[string]any{"role": "user", "content": "环境说明"})
+	answer := response("message", map[string]any{"role": "assistant", "content": "回复"})
+	data := meta("s", "/p") + instructions + answer + user("实际请求") + answer
+	d, _ := parseFixture(t, data)
+	if d.summary.Title != "实际请求" || len(d.events) != 3 || d.events[0].Turn != 0 || d.events[1].Kind != "user" || d.events[2].Turn != 1 {
+		t.Fatalf("late canonical user did not discard instruction items: %+v", d)
+	}
+	d, _ = parseFixture(t, meta("s", "/p")+instructions+answer)
+	if d.summary.Title != "环境说明" || len(d.events) != 2 || d.events[0].Turn != 1 {
+		t.Fatalf("response-only rollout lost its user: %+v", d)
+	}
+}
+
+func TestSummaryMatchesDetailWithoutEventIndex(t *testing.T) {
+	data := meta("s", "/p") + user("请求") +
+		response("function_call", map[string]any{"name": "exec_command", "call_id": "c", "arguments": "{}"}) +
+		response("function_call_output", map[string]any{"call_id": "c", "output": "result"}) +
+		response("function_call_output", map[string]any{"call_id": "c", "output": "extra"}) + "{broken}\n"
+	d, f := parseFixture(t, data)
+	summary, err := readSummary(context.Background(), f, "rollout-test.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(summary.summary, d.summary) || !reflect.DeepEqual(summary.issues, d.issues) || len(summary.events) != 0 || len(summary.turns) != 0 {
+		t.Fatalf("summary diverged or retained detail: %+v", summary)
+	}
+}
+
+func BenchmarkRollout(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "rollout.jsonl")
+	data := meta("s", "/p") + user("request")
+	for i := 0; i < 100; i++ {
+		data += response("function_call", map[string]any{"name": "exec_command", "call_id": string(rune(i + 100)), "arguments": "{}"}) +
+			response("function_call_output", map[string]any{"call_id": string(rune(i + 100)), "output": strings.Repeat("output ", 6000)})
+	}
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		b.Fatal(err)
+	}
+	for _, index := range []bool{false, true} {
+		name := "summary"
+		if index {
+			name = "detail"
+		}
+		b.Run(name, func(b *testing.B) {
+			f, err := os.Open(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer f.Close()
+			b.SetBytes(int64(len(data)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := readRollout(context.Background(), f, "rollout.jsonl", index); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
