@@ -1,0 +1,54 @@
+import type {ReactNode} from 'react';
+import {Modal} from '@heroui/react';
+import type {Account, ResetRequest, RestorePreview, State} from '../bridge/api';
+import {privateText} from '../accounts/accounts';
+import type {RunOperation} from './DialogFrame';
+import {AccountDialogs} from './AccountDialogs';
+import {BackupDialogs} from './BackupDialogs';
+import {CreditDialogs} from './CreditDialogs';
+import {SettingsDialog} from './SettingsDialog';
+
+export type Dialog =
+  | {kind: 'settings'}
+  | {kind: 'overwrite'}
+  | {kind: 'login'; id: string}
+  | {kind: 'alias'; account: Account}
+  | {kind: 'delete'; account: Account}
+  | {kind: 'switch'; account: Account}
+  | {kind: 'credits'; account: Account}
+  | {kind: 'consume'; account: Account; request: ResetRequest}
+  | {kind: 'restore'; preview: RestorePreview};
+
+export interface DialogProps {
+  state: State;
+  busy: string;
+  run: RunOperation;
+  onClose: () => Promise<void>;
+  setDialog: (dialog: Dialog | null) => void;
+}
+
+interface DialogHostProps extends DialogProps {
+  dialog: Dialog | null;
+  useCredit: (account: Account, creditID?: string) => void;
+}
+
+export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
+  let content: ReactNode = null;
+  switch (dialog?.kind) {
+    case 'settings':
+      content = <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} />;
+      break;
+    case 'login': case 'alias': case 'delete': case 'switch':
+      content = <AccountDialogs {...props} dialog={dialog} />;
+      break;
+    case 'overwrite': case 'restore':
+      content = <BackupDialogs {...props} dialog={dialog} />;
+      break;
+    case 'consume': case 'credits':
+      content = <CreditDialogs {...props} dialog={dialog} useCredit={useCredit} />;
+      break;
+  }
+  return <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void props.onClose()}} isDismissable={!props.busy} isKeyboardDismissDisabled={!!props.busy && dialog?.kind !== 'login'}>
+    {content}
+  </Modal.Backdrop>;
+}
