@@ -59,6 +59,10 @@ func TestDetailSearchBeyondPageAndLongOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := list.Sessions[0].ID
+	searchList, err := s.List(ListQuery{Search: "最终命中"})
+	if err != nil || len(searchList.Sessions) != 1 || searchList.Sessions[0].MatchTextOffset < textChunkRunes {
+		t.Fatalf("list match position: %+v %v", searchList, err)
+	}
 	page, err := s.Read(ReadQuery{ID: id})
 	if err != nil || len(page.Events) != eventPageSize || page.NextCursor == "" {
 		t.Fatalf("first: %+v %v", page, err)

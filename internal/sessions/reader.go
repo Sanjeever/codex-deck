@@ -166,6 +166,9 @@ func readDocument(ctx context.Context, f *os.File, file string) (*document, erro
 		if kind == "" {
 			return nil
 		}
+		if (kind == "user" || kind == "assistant") && text == "" {
+			issue(line, "消息未记录可展示文本")
+		}
 		if r.Type == "response_item" && str(p, "role") == "user" && hasUserEvents {
 			return nil
 		}
@@ -191,19 +194,27 @@ func readDocument(ctx context.Context, f *os.File, file string) (*document, erro
 			}{hash, r.Type}
 		}
 		if output && callID != "" {
-			if index, ok := calls[callID]; ok {
+			index, ok := calls[callID]
+			if ok && len(d.events[index].sources) >= 2 && r.Type == "response_item" {
+				issue(line, "同一工具调用记录了额外结果，保留为独立事件")
+			} else if ok {
 				e := &d.events[index]
 				if status == "unknown" {
 					status = shellResultStatus(e.Name, text)
 				}
-				e.sources = append(e.sources, ref)
+				// Paginated rollouts can persist both the raw result and the UI
+				// completion item. Keep a single call at its original position.
+				if len(e.sources) < 2 {
+					e.sources = append(e.sources, ref)
+				}
 				if status != "unknown" {
 					e.Status = status
 				}
-				delete(calls, callID)
 				return nil
 			}
-			issue(line, "工具结果缺少对应调用，保留独立结果")
+			if !ok {
+				issue(line, "工具结果缺少对应调用，保留独立结果")
+			}
 		}
 		if kind == "user" {
 			if number, ok := turnIDs[activeTurnID]; activeTurnID != "" && ok {
@@ -463,8 +474,9 @@ func excerpt(text, search string, limit int) string {
 	runes := []rune(text)
 	start := 0
 	if search != "" {
-		if index := strings.Index(strings.ToLower(text), strings.ToLower(search)); index >= 0 {
-			start = len([]rune(text[:index])) - 40
+		lower := strings.ToLower(text)
+		if index := strings.Index(lower, strings.ToLower(search)); index >= 0 {
+			start = len([]rune(lower[:index])) - 40
 			if start < 0 {
 				start = 0
 			}

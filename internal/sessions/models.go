@@ -8,16 +8,17 @@ type Issue struct {
 }
 
 type Summary struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	Project      string   `json:"project"`
-	CreatedAt    string   `json:"created_at,omitempty"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
-	Models       []string `json:"models"`
-	TurnCount    int      `json:"turn_count"`
-	ToolCount    int      `json:"tool_count"`
-	Snippet      string   `json:"snippet,omitempty"`
-	MatchEventID string   `json:"match_event_id,omitempty"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Project         string   `json:"project"`
+	CreatedAt       string   `json:"created_at,omitempty"`
+	UpdatedAt       string   `json:"updated_at,omitempty"`
+	Models          []string `json:"models"`
+	TurnCount       int      `json:"turn_count"`
+	ToolCount       int      `json:"tool_count"`
+	Snippet         string   `json:"snippet,omitempty"`
+	MatchEventID    string   `json:"match_event_id,omitempty"`
+	MatchTextOffset int      `json:"match_text_offset,omitempty"`
 }
 
 type Event struct {

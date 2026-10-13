@@ -243,6 +243,9 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 			return err
 		}
 		if walkErr != nil {
+			if path == s.root {
+				return fmt.Errorf("无法读取会话目录：%w", walkErr)
+			}
 			page.Issues = append(page.Issues, Issue{File: s.label(path), Message: "无法读取：" + walkErr.Error()})
 			return nil
 		}
@@ -298,6 +301,10 @@ func (s *Service) List(query ListQuery) (ListPage, error) {
 					matched = true
 					summary.Snippet = excerpt(text, search, 180)
 					summary.MatchEventID = event.ID
+					lower := strings.ToLower(text)
+					if index := strings.Index(lower, strings.ToLower(search)); index >= 0 {
+						summary.MatchTextOffset = len([]rune(lower[:index]))
+					}
 					break
 				}
 			}
@@ -468,11 +475,12 @@ func (s *Service) Find(query MatchQuery) (MatchPage, error) {
 		if err != nil {
 			return page, err
 		}
-		index := strings.Index(strings.ToLower(text), strings.ToLower(search))
+		lower := strings.ToLower(text)
+		index := strings.Index(lower, strings.ToLower(search))
 		if index >= 0 || strings.Contains(strings.ToLower(event.Name), strings.ToLower(search)) {
 			offset := 0
 			if index >= 0 {
-				offset = len([]rune(text[:index]))
+				offset = len([]rune(lower[:index]))
 			}
 			page.Matches = append(page.Matches, Match{EventID: event.ID, Turn: event.Turn, Snippet: excerpt(text, search, 180), TextOffset: offset})
 			if len(page.Matches) == matchPageSize {

@@ -83,6 +83,15 @@ it('会话内查找和轮次跳转可读取尚未展示的事件及长输出匹�
   expect(screen.getByText('从第 8961 个字符显示')).toBeTruthy();
 });
 
+it('列表中的长输出命中直接定位匹配片段', async () => {
+  api.ListSessions.mockResolvedValue(listPage([{...summary(), match_event_id: 'later', match_text_offset: 9000, snippet: 'long needle'}]));
+  api.ReadSession.mockResolvedValue(detailPage('one', [event('later', '原始首段', 'tool')]));
+  api.ReadSessionText.mockResolvedValue({text: '已定位 needle', next_offset: 0});
+  render(<Harness />); await flush(); fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  expect(api.ReadSessionText).toHaveBeenCalledWith({id: 'one', event_id: 'later', revision: 'r1', offset: 8960});
+  expect(screen.getByText('已定位 needle', {selector: 'pre'})).toBeTruthy();
+});
+
 it('隐私覆盖正文、摘要、路径、错误和可访问名称，高亮与 HTML 保持纯文本', async () => {
   const secret = 'test@example.test workspace-secret <img src=x onerror=alert(1)>';
   api.ListSessions.mockResolvedValue({...listPage([{...summary(), title: secret, project: secret, snippet: secret}]), source: secret, issues: [{file: secret, message: secret}]});

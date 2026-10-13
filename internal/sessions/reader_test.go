@@ -141,3 +141,15 @@ func TestUnifiedExecStatusUsesRecordedHeaderOnly(t *testing.T) {
 		t.Fatal("unknown tool inferred as success")
 	}
 }
+
+func TestRawAndCompletedToolAreShownOnce(t *testing.T) {
+	data := meta("s", "/p") + user("request") + response("function_call", map[string]any{"name": "exec_command", "call_id": "c", "arguments": "{}"}) + response("function_call_output", map[string]any{"call_id": "c", "output": "Wall time: 1 seconds\nProcess exited with code 1\nOutput:\nfailed"}) + row("event_msg", map[string]any{"type": "item_completed", "turn_id": "t", "item": map[string]any{"type": "CommandExecution", "id": "c", "command": []string{"go", "test"}, "aggregated_output": "failed", "exit_code": 1}})
+	d, f := parseFixture(t, data)
+	if len(d.events) != 2 || d.summary.ToolCount != 1 || d.events[1].Status != "error" {
+		t.Fatalf("duplicate completion: %+v", d)
+	}
+	text, err := eventText(f, d.events[1])
+	if err != nil || strings.Count(text, "failed") != 1 {
+		t.Fatalf("duplicate output: %q %v", text, err)
+	}
+}

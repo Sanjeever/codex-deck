@@ -39,7 +39,7 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
   const jumpMatch = (direction: number) => {
     const values = matches?.matches ?? [];
     if (!values.length) {if (matches?.next_cursor) void find(true); return}
-    const next = matchIndex + direction;
+    const next = matchIndex < 0 ? direction < 0 ? values.length - 1 : 0 : matchIndex + direction;
     if (next >= values.length && matches?.next_cursor) {void find(true); return}
     const index = (next + values.length) % values.length;
     setMatchIndex(index); b.jump(values[index]);

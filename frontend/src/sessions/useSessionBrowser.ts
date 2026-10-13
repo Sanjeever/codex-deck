@@ -24,6 +24,7 @@ export function useSessionBrowser(active: boolean) {
   const detailRequest = useRef(0);
   const id = selected?.id ?? '';
   const initialEvent = selected?.match_event_id ?? '';
+  const initialOffset = selected?.match_text_offset ?? 0;
 
   const loadList = useCallback(async (append = false) => {
     const request = ++listRequest.current;
@@ -69,10 +70,10 @@ export function useSessionBrowser(active: boolean) {
   useEffect(() => {
     if (!active || !id) return;
     setDetail(null);
-    void loadDetail(filter === 'all' ? target?.event_id ?? initialEvent : '', false, filter === 'all' ? target?.text_offset ?? 0 : 0);
+    void loadDetail(filter === 'all' ? target?.event_id ?? initialEvent : '', false, filter === 'all' ? target?.text_offset ?? initialOffset : 0);
     return () => {++detailRequest.current};
     // Cursor updates must not reload the first page.
-  }, [active, id, filter, initialEvent, refreshVersion, target]);
+  }, [active, id, filter, initialEvent, initialOffset, refreshVersion, target]);
 
   const select = (session: SessionSummary) => {setSelected(session); setFilter('all'); setTarget(null); setMobileDetail(true)};
   const focusSearch = () => {setMobileDetail(false); requestAnimationFrame(() => searchRef.current?.focus())};
