@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"codex-deck/internal/network"
+
 	"github.com/studio-b12/gowebdav"
 )
 
@@ -61,7 +63,7 @@ func backupRequest(ctx context.Context, settings Settings, method string, body [
 	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
-	return (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	return (&http.Client{Transport: network.FromContext(ctx), Timeout: 30 * time.Second}).Do(request)
 }
 
 func remoteMetadata(response *http.Response) remoteBackup {
@@ -131,6 +133,7 @@ func writeBackup(ctx context.Context, d Data, expected string, checkExisting boo
 	if expected != "" && !usableETag(d.Settings, expected) {
 		return "", fmt.Errorf("WebDAV 未提供可用于覆盖保护的 ETag，无法安全上传")
 	}
+	d.Network = nil
 	body, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
 		return "", err
@@ -211,7 +214,7 @@ func readBackup(ctx context.Context, settings Settings) (Data, remoteBackup, err
 	if err != nil {
 		return Data{}, remoteBackup{}, err
 	}
-	d, err := parseData(body)
+	d, err := parseBackupData(body)
 	if err != nil {
 		return Data{}, remoteBackup{}, fmt.Errorf("远端备份无效: %w", err)
 	}
@@ -231,6 +234,19 @@ func readBackup(ctx context.Context, settings Settings) (Data, remoteBackup, err
 
 type backupContextTransport struct{ ctx context.Context }
 
+func parseBackupData(body []byte) (Data, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return Data{}, err
+	}
+	delete(fields, "network")
+	body, err := json.Marshal(fields)
+	if err != nil {
+		return Data{}, err
+	}
+	return parseData(body)
+}
+
 func (t backupContextTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	return http.DefaultTransport.RoundTrip(r.WithContext(t.ctx))
+	return network.FromContext(t.ctx).RoundTrip(r.WithContext(t.ctx))
 }

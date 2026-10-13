@@ -51,6 +51,7 @@ func (a *App) startup(ctx context.Context) {
 	if a.err == nil {
 		a.service.SetNotifier(a.notifyLowQuota)
 		a.updater = update.New(currentBuild().Version, func() { runtime.EventsEmit(ctx, "deck:state", a.viewState(a.service.GetState())) })
+		a.updater.Client.Transport = a.service.HTTP
 		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", a.viewState(state)) })
 		a.err = a.service.StartWatching()
 	}

@@ -98,6 +98,7 @@ func (r *Router) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err != nil && route.config.Password != "" {
 		text := strings.ReplaceAll(err.Error(), route.config.Password, "[已隐藏]")
 		text = strings.ReplaceAll(text, url.QueryEscape(route.config.Password), "[已隐藏]")
+		text = strings.ReplaceAll(text, url.UserPassword(route.config.Username, route.config.Password).String(), "[已隐藏]")
 		return response, &proxyError{cause: err, text: text}
 	}
 	return response, err

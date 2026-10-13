@@ -9,10 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"codex-deck/internal/network"
+
 	"github.com/google/uuid"
 )
 
 type Service struct {
+	HTTP                *network.Router
 	authImport          *pendingAuthImport
 	generation          uint64
 	mu                  sync.Mutex
@@ -64,9 +67,19 @@ func NewService(ctx context.Context, path, cliHome string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	config := network.Config{}
+	if saved := store.Snapshot().Network; saved != nil {
+		config = *saved
+	}
+	router, err := network.New(config)
+	if err != nil {
+		return nil, err
+	}
+	ctx = network.WithRouter(ctx, router)
 	ctx, cancel := context.WithCancel(ctx)
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Transport: router, Timeout: 30 * time.Second}
 	s := &Service{cancel: cancel, autoWake: make(chan struct{}, 1), backupWake: make(chan struct{}, 1), store: store, cli: CLI{Home: cliHome}, oauth: OAuth{Client: client, Issuer: "https://auth.openai.com"}, backend: Backend{Client: client, BaseURL: "https://chatgpt.com/backend-api"}, ctx: ctx, usageErrors: map[string]string{}, creditErrors: map[string]string{}, usageTries: map[string]time.Time{}}
+	s.HTTP = router
 	s.mu.Lock()
 	s.syncCLIAccount(false)
 	s.mu.Unlock()
@@ -149,6 +162,13 @@ func (s *Service) state() State {
 		}
 	}
 	state := State{DesktopError: s.desktopError, Preferences: d.Preferences, Accounts: []AccountView{}, Settings: d.Settings, Backup: s.backup, CLIError: s.importError, NextRefreshAt: &nextRefresh, AutoRefreshing: s.autoRefreshing}
+	state.Network = network.Config{Mode: "environment"}
+	if d.Network != nil {
+		state.Network = *d.Network
+		if state.Network.Mode == "" {
+			state.Network.Mode = "environment"
+		}
+	}
 	if s.watchError != "" {
 		state.CLIError = strings.TrimSpace(state.CLIError + " " + s.watchError)
 	}
@@ -261,7 +281,9 @@ func (s *Service) Restore(id string) error {
 		return fmt.Errorf("恢复预览已失效，请重新下载")
 	}
 	if err := s.store.Update(func(d *Data) error {
+		localNetwork := d.Network
 		*d = cloneData(*s.restore)
+		d.Network = localNetwork
 		d.Sync = BackupSync{}
 		if d.Settings.WebDAVURL == source.WebDAVURL && d.Settings.WebDAVUsername == source.WebDAVUsername {
 			d.Sync = BackupSync{URL: source.WebDAVURL, Username: source.WebDAVUsername, ETag: tag}

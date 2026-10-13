@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"codex-deck/internal/network"
 )
 
 type Store struct {
@@ -51,6 +53,11 @@ func parseData(b []byte) (Data, error) {
 	}
 	if d.Version != Version || d.Accounts == nil {
 		return d, fmt.Errorf("不支持的配置格式或版本")
+	}
+	if d.Network != nil {
+		if _, err := network.Normalize(*d.Network); err != nil {
+			return d, err
+		}
 	}
 	if err := validateSettings(d.Settings); err != nil {
 		return d, err

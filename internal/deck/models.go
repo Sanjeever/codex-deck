@@ -3,6 +3,8 @@ package deck
 import (
 	"encoding/json"
 	"time"
+
+	"codex-deck/internal/network"
 )
 
 const Version = 1
@@ -75,13 +77,14 @@ type ResetRequest struct {
 }
 
 type Data struct {
-	Window         *WindowState `json:"window,omitempty"`
-	Preferences    Preferences  `json:"preferences"`
-	Sync           BackupSync   `json:"backup_sync,omitempty"`
-	Version        int          `json:"version"`
-	Settings       Settings     `json:"settings"`
-	Accounts       []Account    `json:"accounts"`
-	LastSwitchedID string       `json:"last_switched_id"`
+	Network        *network.Config `json:"network,omitempty"`
+	Window         *WindowState    `json:"window,omitempty"`
+	Preferences    Preferences     `json:"preferences"`
+	Sync           BackupSync      `json:"backup_sync,omitempty"`
+	Version        int             `json:"version"`
+	Settings       Settings        `json:"settings"`
+	Accounts       []Account       `json:"accounts"`
+	LastSwitchedID string          `json:"last_switched_id"`
 }
 
 // 前端只接收展示字段，账号令牌留在 Go 中。
@@ -108,15 +111,16 @@ type BackupStatus struct {
 }
 
 type State struct {
-	DesktopError   string        `json:"desktop_error"`
-	Preferences    Preferences   `json:"preferences"`
-	Accounts       []AccountView `json:"accounts"`
-	Settings       Settings      `json:"settings"`
-	CLIStore       string        `json:"cli_store"`
-	CLIError       string        `json:"cli_error"`
-	Backup         BackupStatus  `json:"backup"`
-	NextRefreshAt  *time.Time    `json:"next_refresh_at"`
-	AutoRefreshing bool          `json:"auto_refreshing"`
+	Network        network.Config `json:"network"`
+	DesktopError   string         `json:"desktop_error"`
+	Preferences    Preferences    `json:"preferences"`
+	Accounts       []AccountView  `json:"accounts"`
+	Settings       Settings       `json:"settings"`
+	CLIStore       string         `json:"cli_store"`
+	CLIError       string         `json:"cli_error"`
+	Backup         BackupStatus   `json:"backup"`
+	NextRefreshAt  *time.Time     `json:"next_refresh_at"`
+	AutoRefreshing bool           `json:"auto_refreshing"`
 }
 
 type BackupSync struct {
