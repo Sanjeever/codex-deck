@@ -40,8 +40,7 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
   let content: ReactNode = null;
   switch (dialog?.kind) {
     case 'settings':
-      content = <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
-      break;
+      return <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
     case 'update': content = <UpdateDialog {...props} />; break;
     case 'login': case 'alias': case 'delete': case 'switch': case 'import': case 'export':
       content = <AccountDialogs {...props} dialog={dialog} />;

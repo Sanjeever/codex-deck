@@ -10,5 +10,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class {
     observe() {} unobserve() {} disconnect() {}
   });
+  // jsdom 不实现 Web Animations，Tabs 指示条会读取当前动画。
+  Object.defineProperty(Element.prototype, 'getAnimations', {configurable: true, value: vi.fn(() => [])});
 });
-afterEach(() => {vi.unstubAllGlobals()});
+afterEach(() => {vi.unstubAllGlobals(); Reflect.deleteProperty(Element.prototype, 'getAnimations')});

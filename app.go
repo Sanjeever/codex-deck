@@ -332,7 +332,14 @@ func (a *App) SavePreferences(p deck.Preferences) error {
 	if err != nil {
 		return err
 	}
-	if p.LowQuotaNotify && !s.GetState().Preferences.LowQuotaNotify {
+	if err := a.authorizeNotifications(p.LowQuotaNotify, s.GetState().Preferences.LowQuotaNotify); err != nil {
+		return err
+	}
+	return s.SavePreferences(p)
+}
+
+func (a *App) authorizeNotifications(enabled, previouslyEnabled bool) error {
+	if enabled && !previouslyEnabled {
 		if err := a.initialiseNotifications(); err != nil {
 			return err
 		}
@@ -344,5 +351,5 @@ func (a *App) SavePreferences(p deck.Preferences) error {
 			return fmt.Errorf("通知权限未开启，请在系统设置中允许 Codex Deck 发送通知")
 		}
 	}
-	return s.SavePreferences(p)
+	return nil
 }

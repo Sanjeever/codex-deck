@@ -67,7 +67,8 @@ it('恢复预览隐藏账号身份，取消时通知后端且不执行恢复', a
   render(<App />);
   await act(async () => {});
   await press('设置');
-  await press('恢复');
+  await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
+  await press('恢复备份');
   expect(screen.getByText('新增账号')).toBeTruthy();
   expect(screen.getByRole('dialog').innerHTML).not.toContain('account@example.test');
   expect(screen.getByRole('dialog').innerHTML).not.toContain('workspace');

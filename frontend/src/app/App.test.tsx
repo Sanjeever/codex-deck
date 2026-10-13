@@ -1,7 +1,7 @@
-import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import App from './App';
-import type {State} from '../bridge/api';
+import type {Configuration, State} from '../bridge/api';
 import {createState} from '../test/fixtures';
 import {toast} from '@heroui/react';
 
@@ -25,6 +25,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
     expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
     expect(screen.getByRole('switch', {name: '低额度通知'})).toBeTruthy();
+    await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
     const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'});
     fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
     await act(async () => {update({...state, auto_refreshing: false, next_refresh_at: new Date(Date.now() + 300_000).toISOString()}); await Promise.resolve()});
@@ -51,18 +52,22 @@ it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区'
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
-it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留', async () => {
+it('设置保存和失败使用 Toast，错误同时保留在页内，输入仍保留', async () => {
   vi.useFakeTimers();
-  const state = createState();
-  const save = vi.fn(async () => {});
-  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), SaveSettings: save}}});
+  let state = createState();
+  const save = vi.fn(async (config: Configuration) => {
+    state = {...state, settings: config.settings, network: config.network, preferences: {...state.preferences, ...config.preferences}};
+    return {configuration: config, section: '', error: ''};
+  });
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), SaveConfiguration: save}}});
   try {
     render(<App />);
     await act(async () => {await Promise.resolve()});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
+    await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
     const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
     fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
-    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存'})); await Promise.resolve()});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'})); await Promise.resolve()});
     expect(screen.getByRole('alertdialog', {name: '设置已保存'})).toBeTruthy();
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(address.value).toBe('https://example.test/backup/');
@@ -70,12 +75,13 @@ it('设置保存和失败使用 Toast，消息消失后弹窗和输入仍保留'
     expect(screen.queryByText('设置已保存')).toBeNull();
     expect(screen.getByRole('dialog')).toBeTruthy();
     save.mockRejectedValueOnce(new Error('设置写入失败'));
-    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存'})); await Promise.resolve()});
+    fireEvent.change(address, {target: {value: 'https://example.test/changed/'}});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'})); await Promise.resolve()});
     expect(screen.getByRole('alertdialog', {name: '操作失败'})).toBeTruthy();
-    expect(screen.getByText('设置写入失败')).toBeTruthy();
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('设置写入失败');
     await act(async () => {await vi.advanceTimersByTimeAsync(8000)});
-    expect(screen.queryByText('设置写入失败')).toBeNull();
-    expect(address.value).toBe('https://example.test/backup/');
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('设置写入失败');
+    expect(address.value).toBe('https://example.test/changed/');
     expect(screen.getByRole('dialog')).toBeTruthy();
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
@@ -121,7 +127,7 @@ it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用�
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
-it('自启动从系统读取，修改成功才更新开关，失败保留原状态', async () => {
+it('自启动从系统读取，编辑先保留草稿，保存失败保留待保存修改', async () => {
   const state = createState();
   let systemEnabled = false;
   let finish!: (value: boolean) => void;
@@ -135,18 +141,23 @@ it('自启动从系统读取，修改成功才更新开关，失败保留原状�
     const toggle = screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
     await act(async () => {fireEvent.click(toggle); await Promise.resolve()});
+    expect(set).not.toHaveBeenCalled();
+    expect(toggle.checked).toBe(true);
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'}))});
     expect(set).toHaveBeenCalledWith(true);
-    expect(toggle.checked).toBe(false);
+    expect(toggle.checked).toBe(true);
     expect(toggle.disabled).toBe(true);
     await act(async () => {systemEnabled = true; finish(true); await Promise.resolve()});
     expect(toggle.checked).toBe(true);
-    expect(screen.getByText('已开启开机自启动')).toBeTruthy();
+    expect(screen.getByText('设置已保存')).toBeTruthy();
     set.mockRejectedValueOnce(new Error('系统拒绝修改启动项'));
     await act(async () => {fireEvent.click(toggle); await Promise.resolve()});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'}))});
     expect(set).toHaveBeenLastCalledWith(false);
-    expect(toggle.checked).toBe(true);
-    expect(screen.getByText('系统拒绝修改启动项')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', {name: '关闭'}));
+    expect(toggle.checked).toBe(false);
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toContain('系统拒绝修改启动项');
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '关闭'}))});
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '放弃更改'}))});
     systemEnabled = false;
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
     expect((screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement).checked).toBe(false);
@@ -164,11 +175,14 @@ it('读取自启动状态失败可重试，不清空设置输入', async () => {
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
     const toggle = screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
-    expect(screen.getByText('读取启动项失败')).toBeTruthy();
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('读取启动项失败');
+    await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
     const input = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
     fireEvent.change(input, {target: {value: 'https://example.test/backup/'}});
+    await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '常规'}))});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '重试读取'})); await Promise.resolve()});
-    expect(toggle.disabled).toBe(false);
-    expect(input.value).toBe('https://example.test/backup/');
+    expect((screen.getByRole('switch', {name: '开机自启动'}) as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
+    expect((screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement).value).toBe('https://example.test/backup/');
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });

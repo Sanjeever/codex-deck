@@ -3,6 +3,8 @@ export interface BuildInfo {version: string; commit: string; development: boolea
 export interface UpdateState {phase: string; error: string; version: string; notes: string; url: string; checked_at: string | null; downloaded: number; total: number}
 export interface Settings {webdav_url: string; webdav_username: string; webdav_password: string}
 export interface NetworkConfig {mode: 'environment' | 'direct' | 'custom'; url: string; username: string; password: string}
+export interface Configuration {network: NetworkConfig; settings: Settings; preferences: {low_quota_notify: boolean; low_quota_threshold: number; disable_update_check: boolean}}
+export interface ConfigurationSaveResult {configuration: Configuration | null; section: string; error: string}
 export interface QuotaWindow {remaining_percent: number; reset_at: string | null}
 export interface Usage {plan: string; five_hour: QuotaWindow | null; weekly: QuotaWindow | null; reset_credits: number | null; queried_at: string}
 export interface Credit {id: string; reset_type: string; status: string; granted_at: string; expires_at: string | null; title: string | null; description: string | null}
@@ -15,6 +17,7 @@ export interface AuthImportPreview extends PreviewAccount {id: string; existing:
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  SaveConfiguration(config: Configuration): Promise<ConfigurationSaveResult>;
   SaveNetwork(config: NetworkConfig): Promise<NetworkConfig>;
   TestNetwork(config: NetworkConfig): Promise<void>;
   ImportAuth(): Promise<AuthImportPreview | null>;

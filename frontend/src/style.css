@@ -39,6 +39,9 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .empty-state {min-height: 380px; display: flex; align-items: center; justify-content: center;}
 .credit-item {display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border-radius: 6px; background: var(--surface-secondary); overflow-wrap: anywhere;}
 .modal__dialog {border-radius: 8px;}
+.settings-dialog {height: min(560px, 100%);}
+.settings-tabs {display: flex; flex-direction: column; min-height: 0; flex: 1; padding-top: 16px;}
+.settings-content {overflow-y: auto; padding: 20px 0 8px; color: var(--foreground);}
 .button {border-radius: 6px;}
 .input {border-radius: 6px;}
 .toast {border-radius: 6px;}
