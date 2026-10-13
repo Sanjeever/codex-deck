@@ -68,6 +68,7 @@ function AccountRow({account, accounts, privacy, busy, onAction}: Pick<AccountTa
           <Dropdown.Item id="refresh">刷新用量</Dropdown.Item>
           <Dropdown.Item id="credits">重置卡详情</Dropdown.Item>
           <Dropdown.Item id="consume" isDisabled={count === 0 && !pending}>{pending ? '重试重置卡' : '使用重置卡'}</Dropdown.Item>
+          <Dropdown.Item id="export">导出 auth.json</Dropdown.Item>
           <Dropdown.Item id="delete" variant="danger" isDisabled={account.current}>删除</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover>
       </Dropdown>

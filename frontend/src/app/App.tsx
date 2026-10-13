@@ -1,5 +1,5 @@
 import {useRef, useState} from 'react';
-import {Button, Spinner} from '@heroui/react';
+import {Button, Dropdown, Spinner} from '@heroui/react';
 import {privateText} from '../accounts/accounts';
 import {useKeyboardShortcuts} from './useKeyboardShortcuts';
 import {useDeckController} from './useDeckController';
@@ -10,7 +10,7 @@ import {AccountTable} from '../accounts/AccountTable';
 export default function App() {
   const {
     state, dialog, setDialog, busy, loadError, automaticError,
-    run, load, close, login, useCredit, menu, openSettings, refresh, savePreferences,
+    run, load, close, login, importAuth, useCredit, menu, openSettings, refresh, savePreferences,
   } = useDeckController();
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -28,7 +28,16 @@ export default function App() {
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && savePreferences({...state.preferences, privacy: !privacy})}>隐私</Button>
         <Button variant="secondary" size="sm" aria-label={state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={refresh}>{state?.auto_refreshing && <Spinner size="sm" />}刷新</Button>
         <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={openSettings}>设置</Button>
-        <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
+        <div className="flex items-center gap-1">
+          <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
+          <Dropdown>
+            <Dropdown.Trigger aria-label="添加账号方式" isDisabled={!!busy || !state} className="row-menu">▾</Dropdown.Trigger>
+            <Dropdown.Popover><Dropdown.Menu aria-label="添加账号方式" onAction={key => {if (key === 'import') importAuth(); else void login()}}>
+              <Dropdown.Item id="login">浏览器登录</Dropdown.Item>
+              <Dropdown.Item id="import">从 auth.json 导入</Dropdown.Item>
+            </Dropdown.Menu></Dropdown.Popover>
+          </Dropdown>
+        </div>
       </div>
     </header>
     <Notifications state={state} automaticError={automaticError} />

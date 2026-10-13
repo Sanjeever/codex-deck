@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 import {Modal} from '@heroui/react';
-import type {Account, ResetRequest, RestorePreview, State} from '../bridge/api';
+import type {Account, AuthImportPreview, ResetRequest, RestorePreview, State} from '../bridge/api';
 import {privateText} from '../accounts/accounts';
 import type {RunOperation} from '../app/useDeckController';
 import {AccountDialogs} from './AccountDialogs';
@@ -14,6 +14,8 @@ export type Dialog =
   | {kind: 'update'}
   | {kind: 'overwrite'}
   | {kind: 'login'; id: string}
+  | {kind: 'import'; preview: AuthImportPreview}
+  | {kind: 'export'; account: Account}
   | {kind: 'alias'; account: Account}
   | {kind: 'delete'; account: Account}
   | {kind: 'switch'; account: Account}
@@ -41,7 +43,7 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
       content = <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
       break;
     case 'update': content = <UpdateDialog {...props} />; break;
-    case 'login': case 'alias': case 'delete': case 'switch':
+    case 'login': case 'alias': case 'delete': case 'switch': case 'import': case 'export':
       content = <AccountDialogs {...props} dialog={dialog} />;
       break;
     case 'overwrite': case 'restore':

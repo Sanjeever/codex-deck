@@ -66,6 +66,9 @@ export function useDeckController() {
     if (dialog?.kind === 'restore') {
       try {await backend().CancelRestore()} catch (error) {notify('error', '取消恢复失败', errorText(error)); return}
     }
+    if (dialog?.kind === 'import') {
+      try {await backend().CancelAuthImport()} catch (error) {notify('error', '取消导入失败', errorText(error)); return}
+    }
     setDialog(null);
   };
 
@@ -101,12 +104,19 @@ export function useDeckController() {
       case 'credits': showCredits(account); break;
       case 'switch': switchAccount(account); break;
       case 'consume': useCredit(account); break;
+      case 'export': setDialog({kind: 'export', account}); break;
     }
   };
+
+  const importAuth = () => void run('正在导入账号', () => backend().ImportAuth(), preview => {
+    if (!preview) return;
+    if (preview.existing) setDialog({kind: 'import', preview});
+    else notify('success', '账号已导入');
+  });
 
   const openSettings = () => {if (state) setDialog({kind: 'settings'})};
   const refresh = () => void run('正在刷新', () => backend().RefreshAll(), setState);
   const savePreferences = (preferences: Preferences) => void run('正在保存', () => backend().SavePreferences(preferences));
 
-  return {state, dialog, setDialog, busy, loadError, automaticError: automatic.error, run, load, close, login, useCredit, menu, openSettings, refresh, savePreferences};
+  return {state, dialog, setDialog, busy, loadError, automaticError: automatic.error, run, load, close, login, importAuth, useCredit, menu, openSettings, refresh, savePreferences};
 }
