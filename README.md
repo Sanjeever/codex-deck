@@ -13,6 +13,7 @@ Codex Deck 是管理 Codex CLI 多个 ChatGPT 账号、套餐额度和重置卡�
 - WebDAV 自动备份、冲突处理与整体恢复。
 - 隐私模式、单实例、托盘驻留、可选开机自启动和低额度通知。
 - 展示程序版本，检查正式版更新，确认后下载安装并重启。
+- 图形化配置 HTTP/HTTPS 代理，支持连接测试与保存后即时生效。
 
 ## 安装与使用
 
@@ -49,7 +50,7 @@ Linux 的 WebKitGTK 构建标签、桌面构建、版本 bump、发布和验证�
 | --- | --- |
 | 根目录 Go 文件 | 桌面入口、Wails 绑定与系统交互 |
 | `internal/deck` | 账号、认证、额度、持久状态与 WebDAV |
-| `internal/autostart`、`internal/tray`、`internal/update` | 自启动、托盘与程序更新 |
+| `internal/autostart`、`internal/tray`、`internal/update`、`internal/network` | 自启动、托盘、程序更新与统一代理路由 |
 | `frontend/src` | 应用控制、账号展示、对话框、消息和接口类型 |
 | `build`、`scripts`、`.github/workflows` | 平台打包资源、版本工具与发布工作流 |
 
