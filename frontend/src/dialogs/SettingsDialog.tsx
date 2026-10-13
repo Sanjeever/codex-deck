@@ -3,7 +3,8 @@ import {Button, Dropdown, Label, Switch} from '@heroui/react';
 import {backend, type RestorePreview, type State} from '../bridge/api';
 import {dateTime} from '../accounts/accounts';
 import {notify} from '../notifications/Notifications';
-import {DialogFrame, Field, type RunOperation} from './DialogFrame';
+import {DialogFrame, Field} from './DialogFrame';
+import type {RunOperation} from '../app/useDeckController';
 
 interface SettingsDialogProps {
   state: Pick<State, 'settings' | 'preferences' | 'backup'>;

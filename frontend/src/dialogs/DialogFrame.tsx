@@ -1,8 +1,6 @@
 import type {ReactNode} from 'react';
 import {Button, Input, Label, Modal, Spinner, TextField} from '@heroui/react';
 
-export type RunOperation = <T>(label: string, action: () => Promise<T>, done?: (result: T) => void) => Promise<void>;
-
 interface DialogFrameProps {
   title: string;
   busy: string;

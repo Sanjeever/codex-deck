@@ -2,7 +2,7 @@ import type {ReactNode} from 'react';
 import {Modal} from '@heroui/react';
 import type {Account, ResetRequest, RestorePreview, State} from '../bridge/api';
 import {privateText} from '../accounts/accounts';
-import type {RunOperation} from './DialogFrame';
+import type {RunOperation} from '../app/useDeckController';
 import {AccountDialogs} from './AccountDialogs';
 import {BackupDialogs} from './BackupDialogs';
 import {CreditDialogs} from './CreditDialogs';
