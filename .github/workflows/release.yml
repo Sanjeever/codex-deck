@@ -1,0 +1,112 @@
+name: 发布桌面应用
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows/amd64
+            name: windows_amd64
+          - os: macos-14
+            platform: darwin/universal
+            name: darwin_universal
+          - os: ubuntu-22.04
+            platform: linux/amd64
+            name: linux_amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: 检查版本
+        run: node scripts/version.mjs check "${{ github.ref_name }}"
+      - name: 安装 Linux 构建依赖
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - run: pnpm --dir frontend test
+      - run: pnpm --dir frontend build
+      - name: 测试 Go
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then go test -tags webkit2_41 ./...; else go test ./...; fi
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+      - name: 构建
+        shell: bash
+        run: |
+          tags=""
+          if [ "$RUNNER_OS" = Linux ]; then tags="-tags webkit2_41"; fi
+          wails build -clean -s -nosyncgomod -platform '${{ matrix.platform }}' $tags -ldflags '-X main.releaseBuild=true -X main.buildCommit=${{ github.sha }}'
+      - name: macOS 签名与公证
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$CERTIFICATE" ]; then echo '未配置 Developer ID 证书，发布未签名 macOS 包'; exit 0; fi
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$CERTIFICATE_PASSWORD" "$RUNNER_TEMP/release.keychain"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/release.keychain"
+          security unlock-keychain -p "$CERTIFICATE_PASSWORD" "$RUNNER_TEMP/release.keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/release.keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$CERTIFICATE_PASSWORD" "$RUNNER_TEMP/release.keychain"
+          security list-keychains -d user -s "$RUNNER_TEMP/release.keychain"
+          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" build/bin/codex-deck.app
+          ditto -c -k --keepParent build/bin/codex-deck.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple build/bin/codex-deck.app
+      - name: 打包
+        shell: bash
+        run: |
+          mkdir release
+          version="${GITHUB_REF_NAME#v}"
+          name="codex-deck_${version}_${{ matrix.name }}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path build/bin/codex-deck.exe -DestinationPath release/$name.zip"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            ditto -c -k --keepParent build/bin/codex-deck.app "release/$name.zip"
+          else
+            tar -czf "release/$name.tar.gz" -C build/bin codex-deck
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: 发布完整 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create '${{ github.ref_name }}' release/* --verify-tag --draft --title '${{ github.ref_name }}' --generate-notes
+          gh release edit '${{ github.ref_name }}' --draft=false --latest

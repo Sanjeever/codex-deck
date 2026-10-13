@@ -5,5 +5,8 @@
   "frontend:install": "pnpm install --frozen-lockfile",
   "frontend:build": "pnpm build",
   "frontend:dev:watcher": "pnpm dev",
-  "frontend:dev:serverUrl": "auto"
+  "frontend:dev:serverUrl": "auto",
+  "info": {
+    "productVersion": "1.0.0"
+  }
 }
