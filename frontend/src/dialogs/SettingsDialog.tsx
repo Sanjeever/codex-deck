@@ -7,16 +7,17 @@ import {DialogFrame, Field} from './DialogFrame';
 import type {RunOperation} from '../app/useDeckController';
 
 interface SettingsDialogProps {
-  state: Pick<State, 'settings' | 'preferences' | 'backup'>;
+  state: Pick<State, 'settings' | 'preferences' | 'backup' | 'build_info' | 'update'>;
   busy: string;
   run: RunOperation;
   safeText: (value: string) => string;
   onClose: () => Promise<void>;
   onOverwrite: () => void;
   onRestore: (preview: RestorePreview) => void;
+  onUpdate: () => void;
 }
 
-export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore}: SettingsDialogProps) {
+export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore, onUpdate}: SettingsDialogProps) {
   const [settings, setSettings] = useState(() => ({...state.settings}));
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const readAutoStart = () => void run('正在读取自启动设置', () => backend().GetAutoStart(), setAutoStart);
@@ -27,6 +28,19 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
     <Button isDisabled={!!busy} onPress={() => void run('正在保存设置', () => backend().SaveSettings(settings), () => notify('success', '设置已保存'))}>保存</Button>
   }>
     <div className="space-y-5">
+      <div className="space-y-2">
+        <p className="text-sm">Codex Deck v{state.build_info.version}{state.build_info.development && ' · 开发版'}</p>
+        {state.build_info.commit && <Button variant="ghost" size="sm" onPress={() => void navigator.clipboard.writeText(state.build_info.commit).then(() => notify('success', '提交号已复制'), error => notify('error', '复制失败', String(error)))}>提交 {state.build_info.commit.slice(0, 8)}</Button>}
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" isDisabled={!!busy || !!state.update.phase} onPress={() => void run('正在检查更新', () => backend().CheckUpdate(), () => {if (!state.update.version) notify('info', '检查更新完成')})}>检查更新</Button>
+          {state.update.version && <Button size="sm" variant="secondary" onPress={onUpdate}>新版本 v{state.update.version}</Button>}
+        </div>
+        {state.update.error && <p className="text-xs text-danger">{state.update.error}</p>}
+        {state.update.checked_at && <p className="text-xs text-muted">上次检查 · {dateTime(state.update.checked_at)}</p>}
+        <Switch isSelected={!state.preferences.disable_update_check} isDisabled={!!busy || state.build_info.development} onChange={value => void run('正在保存', () => backend().SavePreferences({...state.preferences, disable_update_check: !value}))}>
+          <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>自动检查更新</Label></Switch.Content>
+        </Switch>
+      </div>
       <div className="flex items-center justify-between gap-4">
         <Switch isSelected={autoStart === true} isDisabled={!!busy || autoStart === null} onChange={value => void run('正在修改自启动设置', () => backend().SetAutoStart(value), enabled => {
           setAutoStart(enabled);

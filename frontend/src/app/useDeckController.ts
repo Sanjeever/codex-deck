@@ -16,6 +16,7 @@ export function useDeckController() {
   const busyRef = useRef(false);
   const [loadError, setLoadError] = useState('');
   const canceledLogin = useRef('');
+  const remindedVersion = useRef('');
   const automatic = useAutoRefresh(state !== null, !!busy || dialog !== null);
 
   const run: RunOperation = useCallback(async <T,>(label: string, action: () => Promise<T>, done?: (result: T) => void) => {
@@ -44,7 +45,19 @@ export function useDeckController() {
 
   useEffect(() => window.runtime?.EventsOnMultiple('deck:state', setState, -1), []);
 
+  useEffect(() => {
+    const showUpdate = () => {
+      if (state?.update.version && !state.build_info.development && !state.preferences.disable_update_check && !busy && !dialog && document.visibilityState === 'visible' && remindedVersion.current !== state.update.version) {
+        remindedVersion.current = state.update.version;
+        setDialog({kind: 'update'});
+      }
+    };
+    showUpdate(); document.addEventListener('visibilitychange', showUpdate);
+    return () => document.removeEventListener('visibilitychange', showUpdate);
+  }, [state, busy, dialog]);
+
   const close = async () => {
+    if (dialog?.kind === 'update' && state?.update.phase) return;
     if (busyRef.current && dialog?.kind !== 'login') return;
     if (dialog?.kind === 'login') {
       canceledLogin.current = dialog.id;

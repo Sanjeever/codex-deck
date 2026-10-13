@@ -7,9 +7,11 @@ import {AccountDialogs} from './AccountDialogs';
 import {BackupDialogs} from './BackupDialogs';
 import {CreditDialogs} from './CreditDialogs';
 import {SettingsDialog} from './SettingsDialog';
+import {UpdateDialog} from './UpdateDialog';
 
 export type Dialog =
   | {kind: 'settings'}
+  | {kind: 'update'}
   | {kind: 'overwrite'}
   | {kind: 'login'; id: string}
   | {kind: 'alias'; account: Account}
@@ -36,8 +38,9 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
   let content: ReactNode = null;
   switch (dialog?.kind) {
     case 'settings':
-      content = <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} />;
+      content = <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
       break;
+    case 'update': content = <UpdateDialog {...props} />; break;
     case 'login': case 'alias': case 'delete': case 'switch':
       content = <AccountDialogs {...props} dialog={dialog} />;
       break;
@@ -48,7 +51,8 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
       content = <CreditDialogs {...props} dialog={dialog} useCredit={useCredit} />;
       break;
   }
-  return <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void props.onClose()}} isDismissable={!props.busy} isKeyboardDismissDisabled={!!props.busy && dialog?.kind !== 'login'}>
+  const installing = dialog?.kind === 'update' && !!props.state.update.phase;
+  return <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void props.onClose()}} isDismissable={!props.busy && !installing} isKeyboardDismissDisabled={installing || (!!props.busy && dialog?.kind !== 'login')}>
     <Modal.Container size={dialog?.kind === 'credits' ? 'lg' : 'sm'} placement="center">{content}</Modal.Container>
   </Modal.Backdrop>;
 }

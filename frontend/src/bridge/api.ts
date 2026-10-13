@@ -1,16 +1,21 @@
-export interface Preferences {privacy: boolean; sort: string; low_quota_notify: boolean; low_quota_threshold: number}
+export interface Preferences {privacy: boolean; sort: string; low_quota_notify: boolean; low_quota_threshold: number; disable_update_check?: boolean}
+export interface BuildInfo {version: string; commit: string; development: boolean}
+export interface UpdateState {phase: string; error: string; version: string; notes: string; url: string; checked_at: string | null; downloaded: number; total: number}
 export interface Settings {webdav_url: string; webdav_username: string; webdav_password: string}
 export interface QuotaWindow {remaining_percent: number; reset_at: string | null}
 export interface Usage {plan: string; five_hour: QuotaWindow | null; weekly: QuotaWindow | null; reset_credits: number | null; queried_at: string}
 export interface Credit {id: string; reset_type: string; status: string; granted_at: string; expires_at: string | null; title: string | null; description: string | null}
 export interface Credits {available_count: number; credits: Credit[] | null; queried_at: string}
 export interface Account {id: string; account_id: string; email: string; alias: string; plan: string; current: boolean; auth_error: string; usage: Usage | null; credits: Credits | null; usage_error: string; credits_error: string; pending_reset: ResetRequest | null}
-export interface State {desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean}
+export interface State {build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean}
 export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  CheckUpdate(): Promise<void>;
+  InstallUpdate(): Promise<void>;
+  CancelUpdate(): Promise<void>;
   GetAutoStart(): Promise<boolean>;
   SetAutoStart(enabled: boolean): Promise<boolean>;
   GetState(): Promise<State>;

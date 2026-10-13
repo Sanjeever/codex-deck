@@ -23,7 +23,7 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="flex items-center justify-between gap-4 pb-8">
-      <h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>
+      <div className="flex items-baseline gap-2"><h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>{state && <span className="text-xs text-muted">v{state.build_info.version}</span>}</div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && savePreferences({...state.preferences, privacy: !privacy})}>隐私</Button>
         <Button variant="secondary" size="sm" aria-label={state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={!!busy || !state} onPress={refresh}>{state?.auto_refreshing && <Spinner size="sm" />}刷新</Button>
