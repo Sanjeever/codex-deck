@@ -7,6 +7,33 @@ import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
 
+it('工作区切换保留账号搜索与设置草稿，会话刷新不暂停或调用账号接口', async () => {
+  vi.useFakeTimers();
+  const state = createState({accounts: [{id: 'isolated', account_id: 'workspace', email: 'test@example.test', alias: '', plan: '', current: false, auth_error: '', usage: null, credits: null, usage_error: '', credits_error: '', pending_reset: null}]});
+  const api = {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), RefreshAll: vi.fn(async () => state), BeginLogin: vi.fn(), GetAutoStart: vi.fn(async () => false), ListSessions: vi.fn(async () => ({sessions: [], projects: [], dates: [], source: 'D:/isolated/sessions', missing: false, next_cursor: '', issues: []}))};
+  vi.stubGlobal('go', {main: {App: api}});
+  try {
+    render(<App />); await act(async () => {await Promise.resolve()});
+    const accountSearch = screen.getByRole('textbox', {name: '搜索账号'}) as HTMLInputElement;
+    const sessionsButton = screen.getByRole('button', {name: '会话'});
+    fireEvent.change(accountSearch, {target: {value: '保留搜索'}});
+    const pausedCalls = api.SetAutomaticPaused.mock.calls.length, stateCalls = api.GetState.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', {name: '会话'})); await act(async () => {await vi.advanceTimersByTimeAsync(0)});
+    expect(screen.getByText('D:/isolated/sessions')).toBeTruthy();
+    fireEvent.keyDown(window, {key: 'r', ctrlKey: true}); await act(async () => {await vi.advanceTimersByTimeAsync(0)});
+    fireEvent.keyDown(window, {key: 'n', ctrlKey: true});
+    expect(api.SetAutomaticPaused.mock.calls.length).toBe(pausedCalls); expect(api.GetState.mock.calls.length).toBe(stateCalls); expect(api.RefreshAll).not.toHaveBeenCalled(); expect(api.BeginLogin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {name: '账号'}));
+    expect(accountSearch.value).toBe('保留搜索');
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'})); await Promise.resolve()});
+    fireEvent.click(screen.getByRole('tab', {name: '备份'}));
+    const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
+    fireEvent.change(address, {target: {value: 'https://example.test/draft/'}});
+    fireEvent.click(sessionsButton);
+    expect(address.value).toBe('https://example.test/draft/'); expect(screen.getByRole('dialog')).toBeTruthy();
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
 it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或覆盖输入', async () => {
   vi.useFakeTimers();
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);

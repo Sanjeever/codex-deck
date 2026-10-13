@@ -1,6 +1,6 @@
 import {useEffect, useEffectEvent} from 'react';
 
-export function useKeyboardShortcuts(enabled: boolean, actions: {refresh: () => void; settings: () => void; login: () => void; search: () => void}) {
+export function useKeyboardShortcuts(enabled: boolean, actions: {refresh: () => void; settings: () => void; login?: () => void; search: () => void; sessionSearch?: () => void}) {
   const keydown = useEffectEvent((event: KeyboardEvent) => {
     if (!enabled || event.repeat || event.altKey || !(event.metaKey || event.ctrlKey)) return;
     const target = event.target as HTMLElement;
@@ -8,8 +8,9 @@ export function useKeyboardShortcuts(enabled: boolean, actions: {refresh: () => 
     const key = event.key.toLowerCase();
     if (key === 'r') {event.preventDefault(); actions.refresh()}
     else if (key === ',') {event.preventDefault(); actions.settings()}
-    else if (key === 'n' && !editing) {event.preventDefault(); actions.login()}
+    else if (key === 'n' && !editing && actions.login) {event.preventDefault(); actions.login()}
     else if (key === 'f') {event.preventDefault(); actions.search()}
+    else if (key === 'k' && actions.sessionSearch) {event.preventDefault(); actions.sessionSearch()}
   });
   useEffect(() => {
     window.addEventListener('keydown', keydown);

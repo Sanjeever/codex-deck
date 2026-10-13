@@ -21,3 +21,11 @@ it('重新渲染后快捷键使用最新操作', () => {
  expect(actions.refresh).not.toHaveBeenCalled();
  expect(next.refresh).toHaveBeenCalledTimes(1);
 });
+
+it('会话工作区只路由会话搜索与刷新，停用添加账号并沿用弹窗边界', () => {
+ const actions = {refresh: vi.fn(), settings: vi.fn(), search: vi.fn(), sessionSearch: vi.fn()};
+ const {rerender} = renderHook(({enabled}) => useKeyboardShortcuts(enabled, actions), {initialProps: {enabled: true}});
+ for (const key of ['r', 'f', 'k', 'n']) fireEvent.keyDown(window, {key, ctrlKey: true});
+ expect(actions.refresh).toHaveBeenCalledTimes(1); expect(actions.search).toHaveBeenCalledTimes(1); expect(actions.sessionSearch).toHaveBeenCalledTimes(1);
+ rerender({enabled: false}); fireEvent.keyDown(window, {key: 'k', metaKey: true}); expect(actions.sessionSearch).toHaveBeenCalledTimes(1);
+});
