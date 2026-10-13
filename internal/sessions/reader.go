@@ -193,6 +193,9 @@ func readDocument(ctx context.Context, f *os.File, file string) (*document, erro
 		if output && callID != "" {
 			if index, ok := calls[callID]; ok {
 				e := &d.events[index]
+				if status == "unknown" {
+					status = shellResultStatus(e.Name, text)
+				}
 				e.sources = append(e.sources, ref)
 				if status != "unknown" {
 					e.Status = status
@@ -410,6 +413,31 @@ func resultStatus(text string) string {
 			return "error"
 		}
 		return "success"
+	}
+	return "unknown"
+}
+
+func shellResultStatus(name, text string) string {
+	if name != "exec_command" && name != "write_stdin" {
+		return "unknown"
+	}
+	// This is Codex's response_header in core/src/tools/context.rs, not a
+	// heuristic over command stdout. Never inspect anything after Output:.
+	header, _, found := strings.Cut(text, "\nOutput:\n")
+	if !found || !strings.Contains(header, "Wall time: ") {
+		return "unknown"
+	}
+	for _, line := range strings.Split(header, "\n") {
+		if value, ok := strings.CutPrefix(line, "Process exited with code "); ok {
+			code, err := strconv.Atoi(value)
+			if err != nil {
+				return "unknown"
+			}
+			if code == 0 {
+				return "success"
+			}
+			return "error"
+		}
 	}
 	return "unknown"
 }

@@ -127,3 +127,17 @@ func TestReadLimitAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUnifiedExecStatusUsesRecordedHeaderOnly(t *testing.T) {
+	data := meta("s", "/p") + user("request") + response("function_call", map[string]any{"name": "exec_command", "call_id": "c", "arguments": "{}"}) + response("function_call_output", map[string]any{"call_id": "c", "output": "Chunk ID: abc\nWall time: 1.25 seconds\nProcess exited with code 2\nOutput:\nfailed"})
+	d, _ := parseFixture(t, data)
+	if d.events[1].Status != "error" {
+		t.Fatal(d.events[1].Status)
+	}
+	if shellResultStatus("exec_command", "Wall time: 1 seconds\nOutput:\nProcess exited with code 1") != "unknown" {
+		t.Fatal("stdout inferred as status")
+	}
+	if shellResultStatus("unrecognized", "Wall time: 1 seconds\nProcess exited with code 0\nOutput:\ntext") != "unknown" {
+		t.Fatal("unknown tool inferred as success")
+	}
+}
