@@ -1,6 +1,7 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {Button} from '@heroui/react';
 import {backend, type SessionEvent} from '../bridge/api';
+import {copyToClipboard} from '../bridge/clipboard';
 import {Highlight} from './SessionText';
 import {errorText} from './useSessionBrowser';
 
@@ -13,6 +14,26 @@ export function TimelineEvent({event, sessionID, revision, textStart = 0, query,
   const [loading, setLoading] = useState(false);
   const [offset, setOffset] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const mounted = useRef(true);
+  const latestSafeText = useRef(safeText);
+  useEffect(() => {latestSafeText.current = safeText}, [safeText]);
+  useEffect(() => {mounted.current = true; return () => {mounted.current = false}}, []);
+  const copyFull = async () => {
+    setCopying(true); setCopyError('');
+    try {
+      const parts: string[] = [];
+      let offset = 0;
+      do {
+        const page = await backend().ReadSessionText({id: sessionID, event_id: event.id, revision, offset});
+        if (!mounted.current) return;
+        parts.push(page.text); offset = page.next_offset;
+      } while (offset > 0);
+      await copyToClipboard(latestSafeText.current(parts.join('')), '完整内容');
+    } catch (error) {if (mounted.current) setCopyError(errorText(error))}
+    finally {if (mounted.current) setCopying(false)}
+  };
   useEffect(() => {setOpen(expanded && event.kind === 'tool' || forceOpen)}, [expanded, forceOpen, event.kind]);
   useEffect(() => {setFragment({text: event.text, start: textStart, next: event.text_cursor}); setOffset(null); setError('')}, [event.text, event.text_cursor, textStart, revision]);
   useEffect(() => {
@@ -24,7 +45,12 @@ export function TimelineEvent({event, sessionID, revision, textStart = 0, query,
     }).catch(error => {if (current) setError(errorText(error))}).finally(() => {if (current) setLoading(false)});
     return () => {current = false};
   }, [offset, event.id, sessionID, revision, attempt]);
+  const partial = fragment.next > 0 || fragment.start > 0;
   const text = <>
+    <div className="session-copy-actions">
+      <Button size="sm" variant="ghost" isDisabled={loading || copying} onPress={() => void copyToClipboard(safeText(fragment.text), partial ? '当前片段' : '内容')}>{partial ? '复制当前片段' : '复制内容'}</Button>
+      {partial && <Button size="sm" variant="ghost" isDisabled={loading || copying} onPress={() => void copyFull()}>{copying ? '正在读取完整内容…' : '复制完整内容'}</Button>}
+    </div>
     {fragment.start > 0 && <p className="session-fragment-note">从第 {fragment.start + 1} 个字符显示</p>}
     <pre className="session-message-text"><Highlight text={safeText(fragment.text)} query={safeText(query)} /></pre>
     {(fragment.next > 0 || fragment.start > 0) && <div className="session-chunk-controls">
@@ -32,6 +58,7 @@ export function TimelineEvent({event, sessionID, revision, textStart = 0, query,
       <Button size="sm" variant="secondary" isDisabled={loading || !fragment.next} onPress={() => setOffset(fragment.next)}>下一段内容</Button>
     </div>}
     {error && <div role="alert">{safeText(error)}<Button variant="ghost" size="sm" onPress={() => setAttempt(value => value + 1)}>重试展开</Button></div>}
+    {copyError && <p role="alert" className="session-error">{safeText(copyError)}</p>}
   </>;
   const tool = event.kind !== 'user' && event.kind !== 'assistant';
   const match = query.trim() && safeText(fragment.text).toLowerCase().includes(safeText(query.trim()).toLowerCase());

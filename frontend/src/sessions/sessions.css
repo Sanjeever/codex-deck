@@ -96,6 +96,8 @@
 .session-tool-output {padding: 4px 16px 16px;}
 .session-tool-output .session-message-text {font-family: var(--session-mono); font-size: 13px; line-height: 1.7;}
 .session-chunk-controls {display: flex; gap: var(--session-space); flex-wrap: wrap; margin-top: 12px;}
+.session-copy-actions {display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;}
+.session-copy-actions .button {font-size: 12px; height: 28px; color: var(--session-secondary);}
 .session-fragment-note, .session-match-snippet {font-size: 12px; color: var(--session-secondary); overflow-wrap: anywhere;}
 .session-issues {margin-top: 16px; font-size: 12px; color: var(--session-secondary); overflow-wrap: anywhere;}
 .session-issues p {margin-top: var(--session-space);}
