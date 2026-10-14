@@ -235,14 +235,14 @@ func (a *App) SetAutomaticPaused(paused bool) error {
 		return err
 	}
 	a.desktopMu.Lock()
-	if paused && a.trayBusy != "" {
-		a.desktopMu.Unlock()
-		return fmt.Errorf("托盘操作正在进行，请稍后再试")
-	}
 	a.frontendPaused = paused
 	s.SetAutomaticPaused(paused || a.trayBusy != "")
+	blocked := paused && a.trayBusy != ""
 	a.desktopMu.Unlock()
 	a.invalidateTray()
+	if blocked {
+		return fmt.Errorf("托盘操作正在进行，请稍后再试")
+	}
 	return nil
 }
 func (a *App) WakeAutomatic() error {

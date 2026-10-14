@@ -47,6 +47,9 @@ func TestTrayActionsExcludeWindowWorkAndConcurrentClicks(t *testing.T) {
 	if err := app.SetAutomaticPaused(true); err == nil {
 		t.Fatal("window operation entered during tray action")
 	}
+	if !app.frontendPaused {
+		t.Fatal("lost window pause request received during tray action")
+	}
 	if err := app.SetAutomaticPaused(false); err != nil {
 		t.Fatal(err)
 	}
