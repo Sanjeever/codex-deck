@@ -2,7 +2,7 @@ import type {Account, PreviewAccount} from '../bridge/api';
 
 export function dateTime(value: string | null | undefined) {return value ? new Date(value).toLocaleString('zh-CN', {hour12: false}) : '未知'}
 
-export const LOW_QUOTA_THRESHOLD = 15;
+export function lowQuotaThreshold(value = 0) {return value || 10}
 
 export function updatedAgo(value: string, now = Date.now()) {
   const minutes = Math.floor((now - Date.parse(value)) / 60_000);
@@ -53,7 +53,7 @@ export function usageStale(account: Account, now = Date.now()) {
 
 export type AccountFilter = 'all' | 'low' | 'auth';
 
-export function visibleAccounts(accounts: Account[], query: string, sort: string, now = Date.now(), filter: AccountFilter = 'all', privacy = false) {
+export function visibleAccounts(accounts: Account[], query: string, sort: string, now = Date.now(), filter: AccountFilter = 'all', privacy = false, threshold = lowQuotaThreshold()) {
   const needle = query.trim().toLocaleLowerCase();
   const quota = (a: Account) => {
     if (!a.usage || usageStale(a, now)) return null;
@@ -66,7 +66,7 @@ export function visibleAccounts(accounts: Account[], query: string, sort: string
     const fields = privacy ? [accountName(a, true)] : [a.alias, a.email, a.account_id];
     if (!fields.some(value => value.toLocaleLowerCase().includes(needle))) return false;
     if (filter === 'auth') return !!a.auth_error;
-    if (filter === 'low') return !a.auth_error && !!a.usage && !usageStale(a, now) && [a.usage.five_hour, a.usage.weekly].some(window => window && window.remaining_percent < LOW_QUOTA_THRESHOLD);
+    if (filter === 'low') return !a.auth_error && !!a.usage && !usageStale(a, now) && [a.usage.five_hour, a.usage.weekly].some(window => window && window.remaining_percent <= threshold);
     return true;
   }).sort((a, b) => {
     if (a.current !== b.current) return a.current ? -1 : 1;

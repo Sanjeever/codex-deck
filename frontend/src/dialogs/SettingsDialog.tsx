@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {Button, Dropdown, Label, Modal, Spinner, Switch, Tabs} from '@heroui/react';
 import {backend, type RestorePreview, type State} from '../bridge/api';
-import {dateTime} from '../accounts/accounts';
+import {dateTime, lowQuotaThreshold} from '../accounts/accounts';
 import {notify} from '../notifications/Notifications';
 import {Field} from './DialogFrame';
 import type {RunOperation} from '../app/useDeckController';
@@ -65,15 +65,15 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
                 <Switch isSelected={preferences.low_quota_notify} isDisabled={!!busy} onChange={low_quota_notify => changePreferences({low_quota_notify})}>
                   <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>低额度通知</Label></Switch.Content>
                 </Switch>
-                {preferences.low_quota_notify && <div className="flex items-center justify-between gap-4">
-                  <span className="text-sm">通知阈值</span>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm">低额度阈值</span>
                   <Dropdown>
-                    <Dropdown.Trigger isDisabled={!!busy} className="sort-trigger" aria-label="通知阈值">{preferences.low_quota_threshold || 10}% ▾</Dropdown.Trigger>
-                    <Dropdown.Popover><Dropdown.Menu aria-label="通知阈值" onAction={key => changePreferences({low_quota_threshold: Number(key)})}>
+                    <Dropdown.Trigger isDisabled={!!busy} className="sort-trigger" aria-label="低额度阈值">{lowQuotaThreshold(preferences.low_quota_threshold)}% ▾</Dropdown.Trigger>
+                    <Dropdown.Popover><Dropdown.Menu aria-label="低额度阈值" onAction={key => changePreferences({low_quota_threshold: Number(key)})}>
                       {[5, 10, 20].map(value => <Dropdown.Item key={value} id={String(value)}>{value}%</Dropdown.Item>)}
                     </Dropdown.Menu></Dropdown.Popover>
                   </Dropdown>
-                </div>}
+                </div>
               </div>
             </Tabs.Panel>
             <Tabs.Panel id="network" className="space-y-8">

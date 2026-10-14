@@ -2,12 +2,13 @@ import {useEffect, useState, type RefObject} from 'react';
 import {Button, Dropdown, Input, Meter, TextField} from '@heroui/react';
 import type {Account, QuotaWindow} from '../bridge/api';
 import {ErrorDetails} from '../app/ErrorDetails';
-import {accountName, creditCount, dateTime, LOW_QUOTA_THRESHOLD, pendingConsumption, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts, workspaceName} from './accounts';
+import {accountName, creditCount, dateTime, lowQuotaThreshold, pendingConsumption, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts, workspaceName} from './accounts';
 import type {AccountFilter} from './accounts';
 
 interface AccountTableProps {
   accounts: Account[];
   privacy: boolean;
+  lowQuotaThreshold?: number;
   busy: string;
   query: string;
   sort: string;
@@ -18,7 +19,7 @@ interface AccountTableProps {
   onAdd: () => void;
 }
 
-export function AccountTable({accounts, privacy, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
+export function AccountTable({accounts, privacy, lowQuotaThreshold: configuredThreshold, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
   const [now, setNow] = useState(Date.now);
   const [filter, setFilter] = useState<AccountFilter>('all');
   useEffect(() => {
@@ -27,7 +28,8 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
     document.addEventListener('visibilitychange', update);
     return () => {window.clearInterval(timer); document.removeEventListener('visibilitychange', update)};
   }, []);
-  const visible = visibleAccounts(accounts, query, sort, now, filter, privacy);
+  const threshold = lowQuotaThreshold(configuredThreshold);
+  const visible = visibleAccounts(accounts, query, sort, now, filter, privacy, threshold);
   if (accounts.length === 0) return <div className="empty-state"><Button aria-keyshortcuts="Control+n Meta+n" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
   return <>
     <div className="account-toolbar">
@@ -56,12 +58,12 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
     {visible.length === 0 && <div className="py-12 text-center text-muted"><p>没有匹配账号</p><Button size="sm" variant="ghost" onPress={() => {setFilter('all'); onQuery('')}}>清除筛选</Button></div>}
     <div className="table-scroll"><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
-      <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} onAction={onAction} />)}</tbody>
+      <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} threshold={threshold} onAction={onAction} />)}</tbody>
     </table></div>
   </>;
 }
 
-function AccountRow({account, accounts, privacy, busy, now, onAction}: Pick<AccountTableProps, 'accounts' | 'privacy' | 'busy' | 'onAction'> & {account: Account; now: number}) {
+function AccountRow({account, accounts, privacy, busy, now, threshold, onAction}: Pick<AccountTableProps, 'accounts' | 'privacy' | 'busy' | 'onAction'> & {account: Account; now: number; threshold: number}) {
   const name = accountName(account, privacy);
   const count = creditCount(account);
   const stale = usageStale(account, now);
@@ -78,8 +80,8 @@ function AccountRow({account, accounts, privacy, busy, now, onAction}: Pick<Acco
       {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{stale ? '已过期 · ' : account.usage_error ? '缓存 · ' : ''}{updatedAgo(account.usage.queried_at, now)}</p>}
     </td>
     <td><span className="plan-name">{account.plan || '未知'}</span></td>
-    <td><Quota label="5H" value={account.usage?.five_hour} now={now} /></td>
-    <td><Quota label="Weekly" value={account.usage?.weekly} now={now} /></td>
+    <td><Quota label="5H" value={account.usage?.five_hour} now={now} threshold={threshold} /></td>
+    <td><Quota label="Weekly" value={account.usage?.weekly} now={now} threshold={threshold} /></td>
     <td><Button size="sm" variant="ghost" className="px-0" isDisabled={!!busy} onPress={() => onAction('credits', account)}>{count == null ? '未知' : `${count} 张`}</Button></td>
     <td><div className="flex justify-end items-center gap-2">
       {!account.current && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => onAction('switch', account)}>切换</Button>}
@@ -99,13 +101,13 @@ function AccountRow({account, accounts, privacy, busy, now, onAction}: Pick<Acco
   </tr>;
 }
 
-function Quota({label, value, now}: {label: string; value: QuotaWindow | null | undefined; now: number}) {
+function Quota({label, value, now, threshold}: {label: string; value: QuotaWindow | null | undefined; now: number; threshold: number}) {
   if (!value) return <span className="text-muted">未知</span>;
   const percent = Math.round(value.remaining_percent * 10) / 10;
   return <div className="quota">
-    <Meter aria-label={`${label} 剩余${percent < LOW_QUOTA_THRESHOLD ? '，额度偏低' : ''}`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
+    <Meter aria-label={`${label} 剩余${value.remaining_percent <= threshold ? '，额度偏低' : ''}`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
       <Meter.Output className="tabular-nums text-sm">{percent}%</Meter.Output>
-      <Meter.Track className="h-1"><Meter.Fill className={percent < LOW_QUOTA_THRESHOLD ? 'quota-low' : ''} /></Meter.Track>
+      <Meter.Track className="h-1"><Meter.Fill className={value.remaining_percent <= threshold ? 'quota-low' : ''} /></Meter.Track>
     </Meter>
     <p className="mt-2 text-xs text-muted" title={dateTime(value.reset_at)}>{recoveryText(value.reset_at, now)}</p>
   </div>;

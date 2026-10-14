@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {accountName, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts} from './accounts';
+import {accountName, lowQuotaThreshold, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts} from './accounts';
 import type {Account} from '../bridge/api';
 
 const now = Date.now();
@@ -41,6 +41,14 @@ it('窗口恢复时间已过时将缓存标记为过期', () => {
  a.usage!.queried_at = new Date(now - 1000).toISOString();
  a.usage!.five_hour!.reset_at = new Date(now - 500).toISOString();
  expect(usageStale(a, now)).toBe(true);
+});
+
+it('额度不足使用配置阈值，包含阈值边界并排除无效缓存', () => {
+ const accounts = [account('below', 19.99), account('equal', 20), account('above', 20.01), account('unknown', null), account('stale', 0, 300_001), {...account('auth', 0), auth_error: '需要重新登录'}];
+ expect(visibleAccounts(accounts, '', '', now, 'low', false, 20).map(a => a.id)).toEqual(['below', 'equal']);
+ expect(visibleAccounts(accounts, '', '', now, 'low', false, 5)).toEqual([]);
+ expect(lowQuotaThreshold(0)).toBe(10);
+ expect(lowQuotaThreshold(5)).toBe(5);
 });
 
 it('相对时间区分更新时长、未知恢复和等待服务端确认', () => {

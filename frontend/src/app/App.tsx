@@ -57,7 +57,7 @@ export default function App() {
     {workspace === 'accounts' && !state && !busy && (loadError || automaticError) && <div className="empty-state flex-col gap-4"><p role="alert" className="max-w-lg text-sm text-danger break-all">{safeText(loadError || automaticError)}</p><Button variant="secondary" onPress={() => void load()}>重试加载</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}
     {state && <div hidden={workspace !== 'accounts'}><AccountTable
-      accounts={state.accounts} privacy={privacy} busy={busy}
+      accounts={state.accounts} privacy={privacy} lowQuotaThreshold={state.preferences.low_quota_threshold} busy={busy}
       query={query} sort={state.preferences.sort} searchRef={searchRef} onQuery={setQuery}
       onSort={sort => savePreferences({...state.preferences, sort})}
       onAction={menu} onAdd={() => void login()}
