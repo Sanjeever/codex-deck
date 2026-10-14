@@ -27,6 +27,10 @@ type cliAuth struct {
 	LastRefresh *time.Time `json:"last_refresh"`
 }
 
+func sameCredentials(left, right Tokens) bool {
+	return left.IDToken == right.IDToken && left.AccessToken == right.AccessToken && left.RefreshToken == right.RefreshToken
+}
+
 func (c CLI) config() ([]byte, string, error) {
 	b, err := os.ReadFile(filepath.Join(c.Home, "config.toml"))
 	if os.IsNotExist(err) {
@@ -190,6 +194,7 @@ func accountFromCLI(a Account, auth *cliAuth, i Identity) (Account, error) {
 	a.Tokens.AccessToken = t.AccessToken
 	a.Tokens.RefreshToken = t.RefreshToken
 	a.Tokens.AccountID = i.AccountID
+	a.Tokens.LastRefresh = time.Time{}
 	if auth.LastRefresh != nil {
 		a.Tokens.LastRefresh = *auth.LastRefresh
 	}
@@ -231,6 +236,13 @@ func (c CLI) WriteIfUnchanged(old Account, next Tokens) error {
 		return err
 	}
 	if auth == nil || auth.Tokens == nil || !identityMatches(old, i) || auth.Tokens.AccessToken != old.Tokens.AccessToken || auth.Tokens.RefreshToken != old.Tokens.RefreshToken || auth.Tokens.IDToken != old.Tokens.IDToken {
+		return fmt.Errorf("令牌已保存，CLI 认证同时发生变化，未覆盖 CLI 文件")
+	}
+	lastRefresh := time.Time{}
+	if auth.LastRefresh != nil {
+		lastRefresh = *auth.LastRefresh
+	}
+	if !lastRefresh.Equal(old.Tokens.LastRefresh) {
 		return fmt.Errorf("令牌已保存，CLI 认证同时发生变化，未覆盖 CLI 文件")
 	}
 	return c.Write(next)

@@ -80,14 +80,11 @@ func (s *Service) ExportAuth(id, path string, overwriteCLI bool) error {
 	if err != nil {
 		return err
 	}
-	if current && !local.Tokens.LastRefresh.Before(account.Tokens.LastRefresh) &&
-		(local.Tokens.IDToken != account.Tokens.IDToken || local.Tokens.AccessToken != account.Tokens.AccessToken || local.Tokens.RefreshToken != account.Tokens.RefreshToken || !local.Tokens.LastRefresh.Equal(account.Tokens.LastRefresh)) {
-		account = local
-		account.AuthError = ""
-		if err := s.saveAccount(account); err != nil {
+	if current {
+		account, err = s.syncAccountCredentials(account, local)
+		if err != nil {
 			return err
 		}
-		s.autoBackup()
 	}
 	if account.AuthError != "" {
 		return fmt.Errorf("账号认证已失效，请重新登录后导出")

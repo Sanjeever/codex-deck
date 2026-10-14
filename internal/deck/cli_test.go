@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCLIFileStorePreservesConfig(t *testing.T) {
@@ -73,5 +74,27 @@ func TestCLIRefreshDetectsConcurrentChange(t *testing.T) {
 	}
 	if err := c.WriteIfUnchanged(updated, next); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCLIRefreshDetectsTimestampChange(t *testing.T) {
+	c := CLI{Home: t.TempDir()}
+	old := testAccount(t)
+	updated := old.Tokens
+	updated.LastRefresh = updated.LastRefresh.Add(time.Minute)
+	if err := c.Write(updated); err != nil {
+		t.Fatal(err)
+	}
+	next := old.Tokens
+	next.RefreshToken = "rotated-refresh"
+	if err := c.WriteIfUnchanged(old, next); err == nil {
+		t.Fatal("覆盖刷新期间变化的 CLI 时间")
+	}
+	current, err := c.ReadAccount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Tokens.RefreshToken != updated.RefreshToken || !current.Tokens.LastRefresh.Equal(updated.LastRefresh) {
+		t.Fatal("CLI 文件被覆盖")
 	}
 }

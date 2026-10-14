@@ -98,25 +98,21 @@ func (s *Service) syncCLIAccount(automatic bool) {
 				continue
 			}
 			managed = true
-			if local.Tokens.LastRefresh.Before(existing.Tokens.LastRefresh) {
-				s.cliIdentity = i
-				return
-			}
-			if local.Tokens.IDToken == existing.Tokens.IDToken && local.Tokens.AccessToken == existing.Tokens.AccessToken && local.Tokens.RefreshToken == existing.Tokens.RefreshToken && local.Tokens.LastRefresh.Equal(existing.Tokens.LastRefresh) && local.Email == existing.Email && local.Plan == existing.Plan {
-				s.cliIdentity = i
-				return
-			}
-			local.Tokens.OAuthResponse = existing.Tokens.OAuthResponse
+			_, err = s.syncAccountCredentials(existing, *local)
 			break
 		}
 		// 自动刷新不重新导入本次会话中已删除或被整体恢复移除的账号。
 		if automatic && !managed && i.UserID == s.cliIdentity.UserID && i.AccountID == s.cliIdentity.AccountID {
 			return
 		}
-		err = s.acceptLogin("", local.Tokens, i)
+		if !managed {
+			err = s.acceptLogin("", local.Tokens, i)
+			if err == nil {
+				s.autoBackup()
+			}
+		}
 		if err == nil {
 			s.cliIdentity = i
-			s.autoBackup()
 		}
 	} else if err == nil {
 		s.cliIdentity = Identity{}
@@ -124,6 +120,35 @@ func (s *Service) syncCLIAccount(automatic bool) {
 	if err != nil {
 		s.importError = fmt.Sprintf("同步 CLI 账号失败: %v", err)
 	}
+}
+
+// 调用者持有 mu。时间相同或缺失时，CLI 无法证明不同凭据更新。
+func (s *Service) syncAccountCredentials(account, local Account) (Account, error) {
+	changed := !sameCredentials(account.Tokens, local.Tokens)
+	if changed {
+		if account.Tokens.LastRefresh.IsZero() || local.Tokens.LastRefresh.IsZero() || !local.Tokens.LastRefresh.After(account.Tokens.LastRefresh) {
+			return account, nil
+		}
+		local.Tokens.OAuthResponse = account.Tokens.OAuthResponse
+		account.Tokens = local.Tokens
+		account.Email = local.Email
+		account.Plan = local.Plan
+		account.AuthError = ""
+	} else {
+		if !local.Tokens.LastRefresh.After(account.Tokens.LastRefresh) {
+			return account, nil
+		}
+		account.Tokens.LastRefresh = local.Tokens.LastRefresh
+	}
+	if err := s.saveAccount(account); err != nil {
+		return account, err
+	}
+	if changed {
+		delete(s.usageErrors, account.ID)
+		delete(s.creditErrors, account.ID)
+	}
+	s.autoBackup()
+	return account, nil
 }
 
 func findAccount(d Data, id string) (Account, error) {
@@ -489,14 +514,13 @@ func (s *Service) prepareAccountLocked(id string, force bool) (Account, error) {
 	if err != nil {
 		return a, err
 	}
-	if current && !cliAccount.Tokens.LastRefresh.Before(a.Tokens.LastRefresh) && (cliAccount.Tokens.IDToken != a.Tokens.IDToken || cliAccount.Tokens.AccessToken != a.Tokens.AccessToken || cliAccount.Tokens.RefreshToken != a.Tokens.RefreshToken) {
-		a = cliAccount
-		a.AuthError = ""
-		if err = s.saveAccount(a); err != nil {
+	if current {
+		a, err = s.syncAccountCredentials(a, cliAccount)
+		if err != nil {
 			return a, err
 		}
-		s.autoBackup()
 	}
+	writeCLI := current && sameCredentials(cliAccount.Tokens, a.Tokens)
 	if a.AuthError != "" {
 		return a, &AuthenticationError{Message: a.AuthError}
 	}
@@ -535,7 +559,7 @@ func (s *Service) prepareAccountLocked(id string, force bool) (Account, error) {
 		return a, err
 	}
 	var cliErr error
-	if current {
+	if writeCLI {
 		cliErr = s.cli.WriteIfUnchanged(cliAccount, t)
 	}
 	s.autoBackup()
