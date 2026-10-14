@@ -5,7 +5,7 @@ package tray
 #cgo LDFLAGS: -framework Cocoa
 #include <stdbool.h>
 #include <stdlib.h>
-bool codexDeckTrayStart(const unsigned char *icon, int length);
+bool codexDeckTrayStart(void);
 void codexDeckTrayUpdate(const char *menu);
 void codexDeckTrayStop(void);
 */
@@ -19,9 +19,9 @@ import (
 
 var callbacks Actions
 
-func Start(icon []byte, actions Actions) (*Controller, error) {
+func Start(_ []byte, actions Actions) (*Controller, error) {
 	callbacks = actions
-	if !bool(C.codexDeckTrayStart((*C.uchar)(unsafe.Pointer(&icon[0])), C.int(len(icon)))) {
+	if !bool(C.codexDeckTrayStart()) {
 		return nil, fmt.Errorf("创建 macOS 菜单栏图标失败")
 	}
 	return &Controller{Update: func(menu Menu) {

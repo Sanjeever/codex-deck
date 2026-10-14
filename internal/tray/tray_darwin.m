@@ -33,22 +33,41 @@ static void onMainThread(void (^action)(void)) {
     }
 }
 
-bool codexDeckTrayStart(const unsigned char *icon, int length) {
+static NSImage *menuBarIcon(void) {
+    // 矢量绘制保持 Retina 清晰度，模板图像由系统按菜单栏外观着色。
+    NSImage *image = [NSImage imageWithSize:NSMakeSize(18, 18) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        [NSColor.blackColor setStroke];
+        NSBezierPath *frame = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1.25, 2.75, 15.5, 12.5) xRadius:2.25 yRadius:2.25];
+        frame.lineWidth = 1.5;
+        [frame stroke];
+
+        NSBezierPath *prompt = [NSBezierPath bezierPath];
+        prompt.lineWidth = 1.5;
+        prompt.lineCapStyle = NSLineCapStyleRound;
+        prompt.lineJoinStyle = NSLineJoinStyleRound;
+        [prompt moveToPoint:NSMakePoint(4.75, 11.25)];
+        [prompt lineToPoint:NSMakePoint(7.25, 9)];
+        [prompt lineToPoint:NSMakePoint(4.75, 6.75)];
+        [prompt moveToPoint:NSMakePoint(9.5, 6.75)];
+        [prompt lineToPoint:NSMakePoint(13, 6.75)];
+        [prompt stroke];
+        return YES;
+    }];
+    image.template = YES;
+    return image;
+}
+
+bool codexDeckTrayStart(void) {
     __block bool ready = false;
     onMainThread(^{
-        NSData *data = [NSData dataWithBytes:icon length:length];
-        NSImage *image = [[NSImage alloc] initWithData:data];
-        if (image == nil) return;
-        [image setSize:NSMakeSize(18, 18)];
+        NSImage *image = menuBarIcon();
         statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
         if (statusItem == nil) {
-            [image release];
             return;
         }
         [statusItem retain];
         statusItem.button.image = image;
         statusItem.button.toolTip = @"Codex Deck";
-        [image release];
         target = [[CodexDeckTrayTarget alloc] init];
         // 将应用菜单和 Cmd+Q 接入显式退出，关闭窗口仍只隐藏。
         NSMenu *applicationMenu = [[NSApp.mainMenu itemAtIndex:0] submenu];
