@@ -77,16 +77,18 @@ pnpm --dir frontend test src/sessions/SessionBrowser.test.tsx src/app/App.test.t
 
 ## 版本与标签发布
 
-`frontend/package.json` 的 `version` 是程序版本源。bump 命令同步 `wails.json` 中的系统产品版本，不自动提交或打标签。应用状态 JSON 的格式版本属于数据模型，不能随发布 bump 修改。
+`frontend/package.json` 的 `version` 是程序版本源。bump 命令先检查对应更新日志存在且非空，再同步 `wails.json` 中的系统产品版本，不自动提交或打标签。缺少或空白日志时，两个版本文件保持原值。应用状态 JSON 的格式版本属于数据模型，不能随发布 bump 修改。
 
-以下使用一个示例正式版本，执行时替换为待发布版本：
+每个版本的日志保存在 `docs/releases/<version>.md`。根据上个发布标签以来的用户可见变化编写简体中文说明，有内容才保留“新增、优化、修复”等分组。日志写结果与必要操作，不直接堆放 commit message。版本文件和对应日志须放入同一个 bump 提交。
+
+以下使用一个示例正式版本，执行时替换为待发布版本。先创建并编写 `docs/releases/1.0.1.md`，再执行：
 
 ```sh
 pnpm --dir frontend bump 1.0.1
 node scripts/version.mjs check v1.0.1
 ```
 
-检查版本 diff 与本次行为变化后提交，确保待发布提交已进入 `main`。只有获发布授权时创建并推送标签：
+`check` 同时检查标签、两个版本文件与对应日志。bump 脚本的隔离测试可运行 `node --test scripts/version.test.mjs`。检查版本 diff 与更新日志后，将版本文件和日志一并提交，确保待发布提交已进入 `main`。只有获发布授权时创建并推送标签：
 
 ```sh
 git tag -a v1.0.1 -m "发布 v1.0.1"

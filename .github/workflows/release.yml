@@ -35,6 +35,8 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: 检查版本
         run: node scripts/version.mjs check "${{ github.ref_name }}"
+      - name: 测试版本脚本
+        run: node --test scripts/version.test.mjs
       - name: 安装 Linux 构建依赖
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
