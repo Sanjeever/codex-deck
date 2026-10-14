@@ -206,7 +206,7 @@ type RestorePreview struct {
 	ID         string           `json:"id"`
 	Accounts   int              `json:"accounts"`
 	WebDAVURL  string           `json:"webdav_url"`
-	ModifiedAt *time.Time       `json:"modified_at"`
+	ModifiedAt *time.Time       `json:"modified_at" ts_type:"string | null"`
 	Added      []PreviewAccount `json:"added"`
 	Removed    []PreviewAccount `json:"removed"`
 }

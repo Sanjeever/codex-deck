@@ -20,7 +20,7 @@ type State struct {
 	Version    string     `json:"version"`
 	Notes      string     `json:"notes"`
 	URL        string     `json:"url"`
-	CheckedAt  *time.Time `json:"checked_at"`
+	CheckedAt  *time.Time `json:"checked_at" ts_type:"string | null"`
 	Downloaded int64      `json:"downloaded"`
 	Total      int64      `json:"total"`
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"codex-deck/internal/deck"
+	"codex-deck/internal/network"
 	"codex-deck/internal/sessions"
 	"codex-deck/internal/update"
 	"github.com/pkg/browser"
@@ -107,13 +108,35 @@ func (a *App) RefreshAll() (AppState, error) {
 }
 
 type AppState struct {
-	deck.State
-	BuildInfo BuildInfo    `json:"build_info"`
-	Update    update.State `json:"update"`
+	// 显式声明展示字段，避免 Wails 跳过匿名嵌入中的嵌套类型。
+	Network        network.Config     `json:"network"`
+	DesktopError   string             `json:"desktop_error"`
+	Preferences    deck.Preferences   `json:"preferences"`
+	Accounts       []deck.AccountView `json:"accounts"`
+	Settings       deck.Settings      `json:"settings"`
+	CLIStore       string             `json:"cli_store"`
+	CLIError       string             `json:"cli_error"`
+	Backup         deck.BackupStatus  `json:"backup"`
+	NextRefreshAt  *time.Time         `json:"next_refresh_at" ts_type:"string | null"`
+	AutoRefreshing bool               `json:"auto_refreshing"`
+	BuildInfo      BuildInfo          `json:"build_info"`
+	Update         update.State       `json:"update"`
 }
 
 func (a *App) viewState(state deck.State) AppState {
-	result := AppState{State: state, BuildInfo: currentBuild()}
+	result := AppState{
+		Network:        state.Network,
+		DesktopError:   state.DesktopError,
+		Preferences:    state.Preferences,
+		Accounts:       state.Accounts,
+		Settings:       state.Settings,
+		CLIStore:       state.CLIStore,
+		CLIError:       state.CLIError,
+		Backup:         state.Backup,
+		NextRefreshAt:  state.NextRefreshAt,
+		AutoRefreshing: state.AutoRefreshing,
+		BuildInfo:      currentBuild(),
+	}
 	if a.updater != nil {
 		result.Update = a.updater.State()
 	}

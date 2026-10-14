@@ -27,7 +27,7 @@ type Tokens struct {
 
 type Window struct {
 	RemainingPercent float64    `json:"remaining_percent"`
-	ResetAt          *time.Time `json:"reset_at"`
+	ResetAt          *time.Time `json:"reset_at" ts_type:"string | null"`
 }
 
 type Usage struct {
@@ -35,7 +35,7 @@ type Usage struct {
 	FiveHour     *Window   `json:"five_hour"`
 	Weekly       *Window   `json:"weekly"`
 	ResetCredits *int      `json:"reset_credits"`
-	QueriedAt    time.Time `json:"queried_at"`
+	QueriedAt    time.Time `json:"queried_at" ts_type:"string"`
 }
 
 type Credit struct {
@@ -51,7 +51,7 @@ type Credit struct {
 type Credits struct {
 	AvailableCount int       `json:"available_count"`
 	Credits        []Credit  `json:"credits"`
-	QueriedAt      time.Time `json:"queried_at"`
+	QueriedAt      time.Time `json:"queried_at" ts_type:"string"`
 }
 
 type Account struct {
@@ -106,7 +106,7 @@ type AccountView struct {
 type BackupStatus struct {
 	Busy     bool       `json:"busy"`
 	Conflict bool       `json:"conflict"`
-	At       *time.Time `json:"at"`
+	At       *time.Time `json:"at" ts_type:"string | null"`
 	Error    string     `json:"error"`
 }
 
@@ -119,7 +119,7 @@ type State struct {
 	CLIStore       string         `json:"cli_store"`
 	CLIError       string         `json:"cli_error"`
 	Backup         BackupStatus   `json:"backup"`
-	NextRefreshAt  *time.Time     `json:"next_refresh_at"`
+	NextRefreshAt  *time.Time     `json:"next_refresh_at" ts_type:"string | null"`
 	AutoRefreshing bool           `json:"auto_refreshing"`
 }
 
