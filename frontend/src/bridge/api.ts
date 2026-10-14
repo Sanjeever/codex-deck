@@ -62,7 +62,7 @@ interface Backend {
   PrepareConsume(id: string, creditID: string): Promise<ResetRequest>;
   Consume(id: string, requestID: string): Promise<ConsumeResult>;
 }
-declare global {interface Window {runtime?: {EventsOnMultiple<T = State>(event: string, callback: (value: T) => void, count: number): () => void}; go: {main: {App: Backend}}}}
+declare global {interface Window {runtime?: {EventsOnMultiple<T = State>(event: string, callback: (value: T) => void, count: number): () => void; BrowserOpenURL(url: string): void}; go: {main: {App: Backend}}}}
 export function backend(): Backend {
   if (!window.go?.main?.App) throw new Error('请通过 Wails 启动程序');
   return window.go.main.App;
