@@ -8,13 +8,13 @@ export interface SettingsError {section: string; text: string}
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'preferences'>, run: RunOperation) {
+export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'preferences'>, run: RunOperation, initialTab: SettingsTab = 'general') {
   const [draft, setDraft] = useState<Configuration>(() => ({
     network: {...state.network}, settings: {...state.settings},
     preferences: {low_quota_notify: state.preferences.low_quota_notify, low_quota_threshold: state.preferences.low_quota_threshold, disable_update_check: !!state.preferences.disable_update_check},
   }));
   const [saved, setSaved] = useState(draft);
-  const [tab, setTab] = useState<SettingsTab>('general');
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const [savedAutoStart, setSavedAutoStart] = useState<boolean | null>(null);
   const [error, setError] = useState<SettingsError | null>(null);

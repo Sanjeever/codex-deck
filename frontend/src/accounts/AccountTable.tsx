@@ -1,6 +1,7 @@
 import {useEffect, useState, type RefObject} from 'react';
 import {Button, Dropdown, Input, Meter, TextField} from '@heroui/react';
 import type {Account, QuotaWindow} from '../bridge/api';
+import {ErrorDetails} from '../app/ErrorDetails';
 import {accountName, creditCount, dateTime, LOW_QUOTA_THRESHOLD, pendingConsumption, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts, workspaceName} from './accounts';
 
 interface AccountTableProps {
@@ -57,8 +58,9 @@ function AccountRow({account, accounts, privacy, busy, now, onAction}: Pick<Acco
       <div className="flex items-center gap-2"><span className="font-medium break-all">{name}</span>{account.current && <span className="current-tag">当前</span>}</div>
       {account.alias && account.email && <p className="mt-1 text-xs text-muted break-all">{privacy ? '••••@••••' : account.email}</p>}
       <p className="mt-1 text-xs text-muted" title={workspaceName(account.account_id, privacy)}>工作区 {workspaceName(account.account_id, privacy).slice(0, 12)}</p>
-      {account.auth_error && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => onAction('login', account)}><span title={safeText(account.auth_error)}>需重新登录</span></Button>}
-      {account.usage_error && <p className="row-error" title={safeText(account.usage_error)}>用量查询失败</p>}
+      {account.auth_error && <ErrorDetails label="需重新登录" message={safeText(account.auth_error)} busy={busy} onAction={() => onAction('login', account)} actionLabel="重新登录" />}
+      {account.usage_error && <ErrorDetails label="用量查询失败" message={safeText(account.usage_error)} busy={busy} onAction={() => onAction('refresh', account)} actionLabel="重试此账号" />}
+      {account.credits_error && <ErrorDetails label="重置卡查询失败" message={safeText(account.credits_error)} busy={busy} onAction={() => onAction('credits', account)} actionLabel="重试重置卡查询" />}
       {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{stale ? '已过期 · ' : account.usage_error ? '缓存 · ' : ''}{updatedAgo(account.usage.queried_at, now)}</p>}
     </td>
     <td><span className="plan-name">{account.plan || '未知'}</span></td>

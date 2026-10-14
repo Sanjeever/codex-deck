@@ -3,6 +3,7 @@ import {backend, type Account, type Preferences, type State} from '../bridge/api
 import {pendingConsumption} from '../accounts/accounts';
 import {notify} from '../notifications/Notifications';
 import type {Dialog} from '../dialogs/DialogHost';
+import type {SettingsTab} from '../dialogs/useSettingsDraft';
 import {useAutoRefresh} from './useAutoRefresh';
 
 export type RunOperation = <T>(label: string, action: () => Promise<T>, done?: (result: T) => void) => Promise<void>;
@@ -114,7 +115,7 @@ export function useDeckController() {
     else notify('success', '账号已导入');
   });
 
-  const openSettings = () => {if (state) setDialog({kind: 'settings'})};
+  const openSettings = (tab: SettingsTab = 'general') => {if (state) setDialog({kind: 'settings', tab})};
   const refresh = () => void run('正在刷新', () => backend().RefreshAll(), setState);
   const savePreferences = (preferences: Preferences) => void run('正在保存', () => backend().SavePreferences(preferences));
 

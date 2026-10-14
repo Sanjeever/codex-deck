@@ -8,6 +8,7 @@ import {DialogHost} from '../dialogs/DialogHost';
 import {AccountTable} from '../accounts/AccountTable';
 import {SessionBrowser} from '../sessions/SessionBrowser';
 import {useSessionBrowser} from '../sessions/useSessionBrowser';
+import {ErrorDetails} from './ErrorDetails';
 
 export default function App() {
   const {
@@ -33,7 +34,7 @@ export default function App() {
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && savePreferences({...state.preferences, privacy: !privacy})}>隐私</Button>
         <Button variant="secondary" size="sm" aria-label={workspace === 'sessions' ? '刷新会话' : state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={workspace === 'sessions' ? sessions.listLoading : !!busy || !state} onPress={workspace === 'sessions' ? sessions.refresh : refresh}>{workspace === 'accounts' && state?.auto_refreshing && <Spinner size="sm" />}刷新</Button>
-        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={openSettings}>设置</Button>
+        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => openSettings()}>设置</Button>
         {workspace === 'accounts' && <div className="flex items-center gap-1">
           <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
           <Dropdown>
@@ -48,10 +49,10 @@ export default function App() {
     </header>
     <Notifications state={state} automaticError={automaticError} />
     {state && (automaticError || state.desktop_error || state.cli_error || state.backup.error) && <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-danger">
-      {automaticError && <span title={safeText(automaticError)}>自动刷新异常</span>}
-      {state.desktop_error && <span title={safeText(state.desktop_error)}>桌面功能异常</span>}
-      {state.cli_error && <Button variant="ghost" size="sm" isDisabled={!!busy} onPress={refresh}><span title={safeText(state.cli_error)}>CLI 同步失败 · 重试</span></Button>}
-      {state.backup.error && <Button variant="ghost" size="sm" isDisabled={!!busy} onPress={openSettings}><span title={safeText(state.backup.error)}>{state.backup.conflict ? '备份冲突 · 处理' : '备份失败 · 查看'}</span></Button>}
+      {automaticError && <ErrorDetails label="自动刷新异常" message={safeText(automaticError)} busy={busy} onAction={refresh} />}
+      {state.desktop_error && <ErrorDetails label="桌面功能异常" message={safeText(state.desktop_error)} busy={busy} />}
+      {state.cli_error && <ErrorDetails label="CLI 同步失败" message={safeText(state.cli_error)} busy={busy} onAction={refresh} />}
+      {state.backup.error && <div className="flex flex-wrap items-start gap-2"><ErrorDetails label={state.backup.conflict ? '备份冲突' : '备份失败'} message={safeText(state.backup.error)} busy={busy} /><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => openSettings('backup')}>{state.backup.conflict ? '备份冲突 · 处理' : '备份失败 · 查看'}</Button></div>}
     </div>}
     {workspace === 'accounts' && !state && !busy && (loadError || automaticError) && <div className="empty-state flex-col gap-4"><p role="alert" className="max-w-lg text-sm text-danger break-all">{safeText(loadError || automaticError)}</p><Button variant="secondary" onPress={() => void load()}>重试加载</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}

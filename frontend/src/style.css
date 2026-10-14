@@ -39,6 +39,10 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .row-menu:focus-visible {outline: 2px solid var(--focus); outline-offset: 2px;}
 .row-menu[data-disabled] {opacity: 0.5; cursor: default;}
 .row-error {margin-top: 10px; color: var(--danger); font-size: 11px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;}
+.error-details {margin-top: 8px; color: var(--danger); font-size: 12px; min-width: 0; max-width: 100%;}
+.error-details summary {cursor: pointer; width: fit-content;}
+.error-details summary:focus-visible {outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 3px;}
+.error-details-body {display: grid; gap: 8px; padding: 8px 0; overflow-wrap: anywhere;}
 .empty-state {min-height: 380px; display: flex; align-items: center; justify-content: center;}
 .credit-item {display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border-radius: 6px; background: var(--surface-secondary); overflow-wrap: anywhere;}
 .modal__dialog {border-radius: 8px;}

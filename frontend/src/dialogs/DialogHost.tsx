@@ -7,10 +7,11 @@ import {AccountDialogs} from './AccountDialogs';
 import {BackupDialogs} from './BackupDialogs';
 import {CreditDialogs} from './CreditDialogs';
 import {SettingsDialog} from './SettingsDialog';
+import type {SettingsTab} from './useSettingsDraft';
 import {UpdateDialog} from './UpdateDialog';
 
 export type Dialog =
-  | {kind: 'settings'}
+  | {kind: 'settings'; tab?: SettingsTab}
   | {kind: 'update'}
   | {kind: 'overwrite'}
   | {kind: 'login'; id: string}
@@ -40,7 +41,7 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
   let content: ReactNode = null;
   switch (dialog?.kind) {
     case 'settings':
-      return <SettingsDialog {...props} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
+      return <SettingsDialog {...props} initialTab={dialog.tab} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onOverwrite={() => props.setDialog({kind: 'overwrite'})} onRestore={preview => props.setDialog({kind: 'restore', preview})} onUpdate={() => props.setDialog({kind: 'update'})} />;
     case 'update': content = <UpdateDialog {...props} />; break;
     case 'login': case 'alias': case 'delete': case 'switch': case 'import': case 'export':
       content = <AccountDialogs {...props} dialog={dialog} />;

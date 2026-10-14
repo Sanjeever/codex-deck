@@ -9,6 +9,7 @@ import {ProxySettings} from './ProxySettings';
 import {useSettingsDraft, type SettingsTab} from './useSettingsDraft';
 
 interface SettingsDialogProps {
+  initialTab?: SettingsTab;
   state: Pick<State, 'network' | 'settings' | 'preferences' | 'backup' | 'build_info' | 'update'>;
   busy: string;
   run: RunOperation;
@@ -21,8 +22,8 @@ interface SettingsDialogProps {
 
 const tabs: Record<SettingsTab, string> = {general: '常规', network: '网络', backup: '备份', about: '关于'};
 
-export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore, onUpdate}: SettingsDialogProps) {
-  const {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, unsaved, save} = useSettingsDraft(state, run);
+export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore, onUpdate, initialTab}: SettingsDialogProps) {
+  const {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, unsaved, save} = useSettingsDraft(state, run, initialTab);
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const requestLeave = (action: () => void) => {if (unsaved) setLeave(() => action); else action()};
   const close = () => {if (busy) return; if (leave) setLeave(null); else requestLeave(() => void onClose())};
