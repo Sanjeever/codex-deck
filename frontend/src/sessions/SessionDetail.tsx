@@ -3,6 +3,8 @@ import {Button, Dropdown, Input, Spinner, TextField} from '@heroui/react';
 import {backend, type SessionMatchPage} from '../bridge/api';
 import {groupBy, localDate, localTime, projectLabel, ReadIssues} from './SessionText';
 import {TimelineEvents} from './TimelineEvents';
+import {copyToClipboard} from '../bridge/clipboard';
+import {readConversation} from './conversation';
 import {errorText, nextSessionRequest, type SessionBrowserController} from './useSessionBrowser';
 
 export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string; keyboardEnabled: boolean}) {
@@ -14,6 +16,12 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
   const [finding, setFinding] = useState(false);
   const [matchIndex, setMatchIndex] = useState(-1);
   const [expanded, setExpanded] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const copyRequest = useRef(0);
+  const latestSafeText = useRef(safeText);
+  useEffect(() => {latestSafeText.current = safeText}, [safeText]);
+  useEffect(() => {copyRequest.current++; setCopying(false); setCopyError(''); return () => {copyRequest.current++}}, [b.selected?.id, b.detail?.revision, active]);
   const matchRequest = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const findButton = useRef<HTMLButtonElement>(null);
@@ -56,6 +64,17 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
   const session = page?.session ?? b.selected;
   const effectiveQuery = findQuery || b.selectedSearch;
   const turns = groupBy(page?.events ?? [], event => event.turn);
+  const copy = async (turn: number | null = null) => {
+    if (!page || copying) return;
+    const request = ++copyRequest.current;
+    setCopying(true); setCopyError('');
+    try {
+      const eventID = turn === null ? '' : page.turns.find(item => item.number === turn)?.event_id ?? '';
+      const text = await readConversation(id, page.revision, turn, eventID, () => request === copyRequest.current);
+      if (text !== null) await copyToClipboard(latestSafeText.current(text), turn === null ? '对话' : '本轮对话');
+    } catch (error) {if (request === copyRequest.current) setCopyError(errorText(error))}
+    finally {if (request === copyRequest.current) setCopying(false)}
+  };
   return <section className="session-detail" aria-label="会话详情" aria-busy={b.detailLoading}>
     {!session ? <div className="session-detail-empty">选择会话查看对话</div> : <>
       <header className="session-detail-heading">
@@ -71,6 +90,13 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
       <div className="session-detail-toolbar">
         <div className="session-event-filters" aria-label="事件筛选">{[{id: 'chat', label: '对话'}, {id: 'all', label: '全部记录'}, {id: 'error', label: '异常'}].map(item => <Button key={item.id} variant="ghost" size="sm" aria-pressed={b.filter === item.id} className={b.filter === item.id ? 'is-active' : ''} onPress={() => b.setFilter(item.id)}>{item.label}</Button>)}</div>
         <div className="session-detail-actions">
+          <Dropdown>
+            <Dropdown.Trigger aria-label="会话操作" className="row-menu" isDisabled={copying}>···</Dropdown.Trigger>
+            <Dropdown.Popover><Dropdown.Menu aria-label="会话操作" onAction={key => {if (key === 'copy') void copy(); else void copyToClipboard(session.resume_command!, '恢复命令')}}>
+              <Dropdown.Item id="copy" isDisabled={!page || b.detailLoading}>复制对话</Dropdown.Item>
+              <Dropdown.Item id="resume" isDisabled={!session.resume_command}><span title={session.resume_command || '会话未记录有效 Codex ID'}>复制恢复命令</span></Dropdown.Item>
+            </Dropdown.Menu></Dropdown.Popover>
+          </Dropdown>
           {b.filter !== 'chat' && <Button size="sm" variant="ghost" className="session-expand" onPress={() => setExpanded(value => !value)}>{expanded ? '折叠工具' : '展开工具'}</Button>}
           <Dropdown>
             <Button size="sm" variant="ghost" aria-label="跳到对话轮次" isDisabled={!page?.turns.length}>轮次</Button>
@@ -88,11 +114,13 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
         {findQuery.trim() && <div className="session-find-matches"><span role="status">{finding ? '查找中…' : matches?.matches.length ? `${matchIndex + 1} / ${matches.matches.length}${matches.next_cursor ? '+' : ''}` : '无匹配事件'}</span><Button isIconOnly size="sm" variant="ghost" aria-label="上一个匹配事件" isDisabled={finding || !matches?.matches.length} onPress={() => jumpMatch(-1)}>↑</Button><Button isIconOnly size="sm" variant="ghost" aria-label="下一个匹配事件" isDisabled={finding || (!matches?.matches.length && !matches?.next_cursor)} onPress={() => jumpMatch(1)}>↓</Button></div>}
       </div>}
       <div className="session-timeline">
+        {copying && <p role="status" className="session-loading"><Spinner size="sm" />正在读取对话…</p>}
+        {copyError && <p role="alert" className="session-error">{safeText(copyError)}</p>}
         {findError && <div role="alert" className="session-error">{safeText(findError)}<Button size="sm" variant="ghost" onPress={() => void find()}>重试查找</Button></div>}
         {b.detailError && <div role="alert" className="session-error">{safeText(b.detailError)}<Button size="sm" variant="secondary" onPress={() => void b.loadDetail()}>重试详情</Button></div>}
         {b.detailLoading && <p role="status" className="session-loading"><Spinner size="sm" />正在读取记录…</p>}
         {!b.detailLoading && page && !page.events.length && <div className="session-no-results"><h3>{b.filter === 'error' ? '没有记录到异常' : b.filter === 'chat' ? '没有可展示的对话' : '没有可展示的记录'}</h3></div>}
-        {[...turns].map(([number, events]) => <section className="session-turn" key={number} aria-label={number ? `第 ${number} 轮对话` : '轮次前记录'}><div className="session-turn-heading"><span>{number ? `第 ${number} 轮` : '轮次前记录'}</span><time>{localTime(events[0]?.time)}</time></div><TimelineEvents events={events} page={page!} sessionID={id} query={effectiveQuery} expanded={expanded} focusEventID={b.focusEventID} safeText={safeText} /></section>)}
+        {[...turns].map(([number, events]) => <section className="session-turn" key={number} aria-label={number ? `第 ${number} 轮对话` : '轮次前记录'}><div className="session-turn-heading"><span>{number ? `第 ${number} 轮` : '轮次前记录'}</span><time>{localTime(events[0]?.time)}</time>{number > 0 && <Button size="sm" variant="ghost" isDisabled={copying || b.detailLoading} onPress={() => void copy(number)}>复制本轮</Button>}</div><TimelineEvents events={events} page={page!} sessionID={id} query={effectiveQuery} expanded={expanded} focusEventID={b.focusEventID} safeText={safeText} /></section>)}
         {page?.next_cursor && <Button size="sm" variant="secondary" isDisabled={b.detailLoading} onPress={() => void b.loadDetail('', true)}>加载后续记录</Button>}
         <ReadIssues issues={page?.issues ?? matches?.issues ?? []} safeText={safeText} />
       </div>

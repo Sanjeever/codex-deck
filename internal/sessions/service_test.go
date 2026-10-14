@@ -17,6 +17,30 @@ func newFixtureService(t *testing.T) (*Service, string) {
 	return NewService(context.Background(), home), filepath.Join(home, "sessions")
 }
 
+func TestResumeCommandUsesRecordedSessionID(t *testing.T) {
+	s, root := newFixtureService(t)
+	const sessionID = "9fb19d9b-42a9-4346-a9d0-27c242de94df"
+	fixture(t, filepath.Join(root, "renamed.jsonl"), meta(sessionID, "/project")+user("request"))
+	fixture(t, filepath.Join(root, "invalid.jsonl"), meta("bad; command", "/project")+user("invalid"))
+	list, err := s.List(ListQuery{})
+	if err != nil || len(list.Sessions) != 2 {
+		t.Fatalf("list: %+v %v", list, err)
+	}
+	for _, summary := range list.Sessions {
+		command := ""
+		if summary.Title == "request" {
+			command = "codex resume " + sessionID
+		}
+		if summary.ResumeCommand != command || summary.ID == sessionID {
+			t.Fatalf("summary: %+v", summary)
+		}
+		page, err := s.Read(ReadQuery{ID: summary.ID, Filter: "chat"})
+		if err != nil || page.Session.ResumeCommand != command {
+			t.Fatalf("read: %+v %v", page, err)
+		}
+	}
+}
+
 func TestListSearchAndPagination(t *testing.T) {
 	s, root := newFixtureService(t)
 	for i := 0; i < listPageSize+3; i++ {

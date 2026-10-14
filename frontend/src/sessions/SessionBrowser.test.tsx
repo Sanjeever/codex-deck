@@ -23,6 +23,42 @@ beforeEach(() => {
 });
 afterEach(() => {cleanup(); vi.useRealTimers(); Reflect.deleteProperty(Element.prototype, 'scrollIntoView')});
 
+it('会话菜单复制真实恢复命令，复制本轮使用全文并沿用隐私规则', async () => {
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText}});
+  const command = 'codex resume 9fb19d9b-42a9-4346-a9d0-27c242de94df';
+  api.ReadSession.mockResolvedValue({...detailPage('one', [event('e1', 'test@example.test workspace-secret')]), session: {...summary(), resume_command: command}});
+  render(<Harness privacy />); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  fireEvent.click(screen.getByRole('button', {name: '会话操作'})); await flush();
+  fireEvent.click(screen.getByRole('menuitem', {name: '复制恢复命令'})); await flush();
+  expect(writeText).toHaveBeenLastCalledWith(command);
+  fireEvent.click(screen.getByRole('button', {name: '复制本轮'})); await flush();
+  expect(api.ReadSession).toHaveBeenLastCalledWith({id: 'one', filter: 'chat', cursor: '', event_id: 'e1'});
+  expect(writeText).toHaveBeenLastCalledWith('## 第 1 轮\n\n### 你\n\n••••@•••• ••••••••');
+  fireEvent.click(screen.getByRole('button', {name: '会话操作'})); await flush();
+  fireEvent.click(screen.getByRole('menuitem', {name: '复制对话'})); await flush();
+  expect(writeText).toHaveBeenLastCalledWith('# 请求 one\n\n## 第 1 轮\n\n### 你\n\n••••@•••• ••••••••');
+  Reflect.deleteProperty(navigator, 'clipboard');
+});
+
+it('切换会话时取消旧对话复制，缺少真实 ID 时停用恢复命令', async () => {
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText}});
+  api.ListSessions.mockResolvedValue(listPage([summary(), summary('two')]));
+  render(<Harness />); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush();
+  fireEvent.click(screen.getByRole('button', {name: '会话操作'})); await flush();
+  expect(screen.getByRole('menuitem', {name: '复制恢复命令'}).getAttribute('aria-disabled')).toBe('true');
+  let finish!: (page: SessionReadPage) => void;
+  api.ReadSession.mockImplementationOnce(() => new Promise(resolve => {finish = resolve}));
+  fireEvent.click(screen.getByRole('menuitem', {name: '复制对话'})); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 two/})); await flush();
+  await act(async () => {finish(detailPage())});
+  expect(writeText).not.toHaveBeenCalled();
+  Reflect.deleteProperty(navigator, 'clipboard');
+});
+
 it('列表方向键只移动焦点，Enter 才读取详情，停用期间不响应导航', async () => {
   api.ListSessions.mockResolvedValue(listPage([summary(), summary('two')]));
   const view = render(<Harness />); await flush();

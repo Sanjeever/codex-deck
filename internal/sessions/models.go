@@ -9,6 +9,7 @@ type Issue struct {
 
 type Summary struct {
 	ID              string   `json:"id"`
+	ResumeCommand   string   `json:"resume_command,omitempty"`
 	Title           string   `json:"title"`
 	Project         string   `json:"project"`
 	CreatedAt       string   `json:"created_at,omitempty"`

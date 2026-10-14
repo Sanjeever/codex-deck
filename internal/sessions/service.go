@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const listPageSize = 40
@@ -157,6 +159,9 @@ func (s *Service) load(ctx context.Context, path string, needDocument bool) (*en
 		if !sameVersion(info, after) {
 			f.Close()
 			return nil, nil, fmt.Errorf("会话在读取期间发生变化，请重试")
+		}
+		if sessionID, err := uuid.Parse(d.summary.ID); err == nil {
+			d.summary.ResumeCommand = "codex resume " + sessionID.String()
 		}
 		d.summary.ID = id
 		e = &entry{path: path, info: info, summary: d.summary, issues: d.issues}

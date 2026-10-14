@@ -69,7 +69,7 @@ export function backend(): Backend {
 }
 
 export interface SessionIssue {file: string; line?: number; message: string}
-export interface SessionSummary {id: string; title: string; project: string; created_at?: string; updated_at?: string; models: string[]; turn_count: number; tool_count: number; snippet?: string; match_event_id?: string; match_text_offset?: number}
+export interface SessionSummary {id: string; resume_command?: string; title: string; project: string; created_at?: string; updated_at?: string; models: string[]; turn_count: number; tool_count: number; snippet?: string; match_event_id?: string; match_text_offset?: number}
 export interface SessionEvent {id: string; turn: number; kind: string; time?: string; name?: string; status?: string; text: string; text_cursor: number}
 export interface SessionTurn {number: number; event_id: string}
 export interface SessionListQuery {search: string; project: string; date: string; cursor: string; request_id?: number}
