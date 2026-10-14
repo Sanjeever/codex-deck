@@ -195,3 +195,15 @@ func (c CLI) SaveProxy(change CLIProxyChange) (CLIProxyState, error) {
 	}
 	return c.proxyState(parsed), nil
 }
+
+func (s *Service) GetCLIProxy() (CLIProxyState, error) {
+	s.cliProxyMu.Lock()
+	defer s.cliProxyMu.Unlock()
+	return s.cli.ReadProxy()
+}
+
+func (s *Service) SaveCLIProxy(change CLIProxyChange) (CLIProxyState, error) {
+	s.cliProxyMu.Lock()
+	defer s.cliProxyMu.Unlock()
+	return s.cli.SaveProxy(change)
+}

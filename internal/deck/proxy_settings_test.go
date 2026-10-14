@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -108,6 +109,10 @@ func TestAllServiceRequestsShareProxy(t *testing.T) {
 
 func TestNetworkExcludedFromBackupAndRetainedOnRestore(t *testing.T) {
 	s := testService(t)
+	cliProxy, err := s.SaveCLIProxy(CLIProxyChange{URL: "http://localhost:7897"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := network.Config{Mode: "direct"}
 	if err := s.SaveNetwork(config); err != nil {
 		t.Fatal(err)
@@ -152,5 +157,9 @@ func TestNetworkExcludedFromBackupAndRetainedOnRestore(t *testing.T) {
 	}
 	if s.GetState().Network != config || *s.store.Snapshot().Network != config {
 		t.Fatal("恢复覆盖本机代理")
+	}
+	currentCLIProxy, err := s.GetCLIProxy()
+	if err != nil || !reflect.DeepEqual(currentCLIProxy, cliProxy) || strings.Contains(string(saved), "localhost:7897") {
+		t.Fatal("备份或恢复包含了 CLI 代理")
 	}
 }

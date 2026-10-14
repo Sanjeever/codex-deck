@@ -30,6 +30,7 @@ type Service struct {
 	autoWake            chan struct{}
 	store               *Store
 	cli                 CLI
+	cliProxyMu          sync.Mutex
 	oauth               OAuth
 	backend             Backend
 	ctx                 context.Context
