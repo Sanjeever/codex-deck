@@ -27,7 +27,7 @@ function setup(initial = createState()) {
     Backup: vi.fn(async () => {}), CheckUpdate: vi.fn(async () => {}),
   };
   vi.stubGlobal('go', {main: {App: api}});
-  vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (value: State) => void) => {if (event === 'deck:state') update = callback; return () => {}}});
   render(<App />);
   return {api, push: (value: Partial<State>) => update({...state, ...value}), state: () => state};
 }

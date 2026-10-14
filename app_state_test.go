@@ -42,9 +42,10 @@ func TestAppStatePreservesJSONContract(t *testing.T) {
 			// 保留原匿名嵌入的 JSON 契约，检查显式映射未遗漏字段或改变空值。
 			want, err := json.Marshal(struct {
 				deck.State
+				TrayBusy  string       `json:"tray_busy"`
 				BuildInfo BuildInfo    `json:"build_info"`
 				Update    update.State `json:"update"`
-			}{test.state, currentBuild(), update.State{Error: "更新失败"}})
+			}{test.state, "", currentBuild(), update.State{Error: "更新失败"}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -9,7 +9,7 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func Start(icon []byte, show, quit func()) (func(), error) {
+func Start(icon []byte, actions Actions) (*Controller, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, fmt.Errorf("连接桌面会话失败: %w", err)
@@ -28,7 +28,7 @@ func Start(icon []byte, show, quit func()) (func(), error) {
 		return nil, fmt.Errorf("当前桌面没有运行托盘宿主")
 	}
 	// 提前设置图标和菜单，避免注册时导出空内容。
-	configure(icon, show, quit)
+	update := configure(icon, actions)
 	start, stop := systray.RunWithExternalLoop(nil, nil)
 	start()
 	name := fmt.Sprintf("org.kde.StatusNotifierItem-%d-1", os.Getpid())
@@ -48,5 +48,5 @@ func Start(icon []byte, show, quit func()) (func(), error) {
 		stop()
 		return nil, fmt.Errorf("注册系统托盘失败: %w", err)
 	}
-	return stop, nil
+	return &Controller{Update: update, Stop: stop}, nil
 }

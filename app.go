@@ -25,6 +25,12 @@ type App struct {
 	desktopMu          sync.Mutex
 	stopTray           func()
 	trayReady          bool
+	trayUpdates        chan struct{}
+	trayWorkers        sync.WaitGroup
+	trayBusy           string
+	trayMessage        string
+	trayFailed         bool
+	frontendPaused     bool
 	quitting           bool
 	notificationMu     sync.Mutex
 	notificationsReady bool
@@ -36,7 +42,7 @@ type App struct {
 	cancel             context.CancelFunc
 }
 
-func NewApp() *App { return &App{ready: make(chan struct{})} }
+func NewApp() *App { return &App{ready: make(chan struct{}), trayUpdates: make(chan struct{}, 1)} }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	defer close(a.ready)
@@ -56,7 +62,10 @@ func (a *App) startup(ctx context.Context) {
 		a.service.SetNotifier(a.notifyLowQuota)
 		a.updater = update.New(currentBuild().Version, func() { runtime.EventsEmit(ctx, "deck:state", a.viewState(a.service.GetState())) })
 		a.updater.Client.Transport = a.service.HTTP
-		a.service.SetOnChange(func(state deck.State) { runtime.EventsEmit(ctx, "deck:state", a.viewState(state)) })
+		a.service.SetOnChange(func(state deck.State) {
+			a.invalidateTray()
+			runtime.EventsEmit(ctx, "deck:state", a.viewState(state))
+		})
 		a.err = a.service.StartWatching()
 	}
 }
@@ -70,12 +79,16 @@ func (a *App) shutdown(ctx context.Context) {
 		}
 	}()
 	<-a.ready
+	a.desktopMu.Lock()
+	a.quitting = true
+	a.desktopMu.Unlock()
 	if a.updater != nil {
 		a.updater.Stop()
 	}
 	if a.cancel != nil {
 		a.cancel()
 	}
+	a.trayWorkers.Wait()
 	if a.service != nil {
 		a.service.Shutdown()
 		if a.notificationsReady {
@@ -97,6 +110,7 @@ func (a *App) GetState() (AppState, error) {
 	if err != nil {
 		return AppState{}, err
 	}
+	a.invalidateTray()
 	return a.viewState(s.GetState()), nil
 }
 func (a *App) RefreshAll() (AppState, error) {
@@ -119,6 +133,7 @@ type AppState struct {
 	Backup         deck.BackupStatus  `json:"backup"`
 	NextRefreshAt  *time.Time         `json:"next_refresh_at" ts_type:"string | null"`
 	AutoRefreshing bool               `json:"auto_refreshing"`
+	TrayBusy       string             `json:"tray_busy"`
 	BuildInfo      BuildInfo          `json:"build_info"`
 	Update         update.State       `json:"update"`
 }
@@ -141,6 +156,13 @@ func (a *App) viewState(state deck.State) AppState {
 		result.Update = a.updater.State()
 	}
 	a.desktopMu.Lock()
+	result.TrayBusy = a.trayBusy
+	if a.trayFailed {
+		if result.DesktopError != "" {
+			result.DesktopError += "；"
+		}
+		result.DesktopError += a.trayMessage
+	}
 	result.Update.Error = firstUpdateError(result.Update.Error, a.updateFailure)
 	a.desktopMu.Unlock()
 	return result
@@ -212,7 +234,15 @@ func (a *App) SetAutomaticPaused(paused bool) error {
 	if err != nil {
 		return err
 	}
-	s.SetAutomaticPaused(paused)
+	a.desktopMu.Lock()
+	if paused && a.trayBusy != "" {
+		a.desktopMu.Unlock()
+		return fmt.Errorf("托盘操作正在进行，请稍后再试")
+	}
+	a.frontendPaused = paused
+	s.SetAutomaticPaused(paused || a.trayBusy != "")
+	a.desktopMu.Unlock()
+	a.invalidateTray()
 	return nil
 }
 func (a *App) WakeAutomatic() error {

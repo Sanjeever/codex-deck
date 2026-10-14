@@ -2,10 +2,43 @@ import {act, cleanup, fireEvent, render, screen, within} from '@testing-library/
 import {afterEach, expect, it, vi} from 'vitest';
 import App from './App';
 import type {Configuration, State} from '../bridge/api';
-import {createState} from '../test/fixtures';
+import {createAccount, createState} from '../test/fixtures';
 import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
+
+it('托盘操作期间停用窗口业务操作，结束后恢复', async () => {
+  const state = createState({accounts: [createAccount()], tray_busy: '正在切换账号'});
+  let update!: (value: State) => void;
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state)}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (value: State) => void) => {if (event === 'deck:state') update = callback; return () => {}}});
+  try {
+    render(<App />); await act(async () => {});
+    expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', {name: '添加账号'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('正在切换账号').getAttribute('role')).toBe('status');
+    await act(async () => {update({...state, tray_busy: ''})});
+    expect((screen.getByRole('button', {name: '设置'}) as HTMLButtonElement).disabled).toBe(false);
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('托盘切换请求打开文件存储确认，确认后才修改 CLI', async () => {
+  const account = createAccount({id: 'target', email: 'target@example.test'});
+  const state = createState({accounts: [account], cli_store: 'keyring'});
+  let request!: (id: string) => void;
+  const switchAccount = vi.fn(async () => {});
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Switch: switchAccount}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (id: string) => void) => {if (event === 'deck:tray-switch') request = callback; return () => {}}});
+  try {
+    render(<App />); await act(async () => {});
+    await act(async () => {request('target')});
+    expect(screen.getByRole('heading', {name: '切换账号'})).toBeTruthy();
+    expect(screen.getByText(/CLI 当前使用 keyring 存储/)).toBeTruthy();
+    expect(switchAccount).not.toHaveBeenCalled();
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '确认切换'}))});
+    expect(switchAccount).toHaveBeenCalledExactlyOnceWith('target', true);
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
 
 it('首次使用仅显示一个添加入口，登录完成直接更新账号列表', async () => {
   let state = createState();
@@ -82,7 +115,7 @@ it('后端自动请求期间仍能打开设置，状态更新不关闭弹窗或�
   let update!: (value: State) => void;
   const api = {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), WakeAutomatic: vi.fn(async () => {}), GetAutoStart: vi.fn(async () => false)};
   vi.stubGlobal('go', {main: {App: api}});
-  vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (value: State) => void) => {if (event === 'deck:state') update = callback; return () => {}}});
   try {
     render(<App />);
     await act(async () => {await Promise.resolve()});
@@ -177,7 +210,7 @@ it('当前账号的删除菜单禁用，确认期间成为当前账号也禁用�
   let update!: (value: State) => void;
   const remove = vi.fn(async () => {});
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Delete: remove}}});
-  vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (value: State) => void) => {if (event === 'deck:state') update = callback; return () => {}}});
   try {
     render(<App />);
     await act(async () => {await Promise.resolve()});

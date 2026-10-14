@@ -46,6 +46,14 @@ export function useDeckController() {
 
   useEffect(() => window.runtime?.EventsOnMultiple('deck:state', setState, -1), []);
 
+  useEffect(() => window.runtime?.EventsOnMultiple<string>('deck:tray-switch', id => {
+    void run('正在读取账号', () => backend().GetState(), latest => {
+      const account = latest.accounts.find(account => account.id === id);
+      if (account) setDialog({kind: 'switch', account});
+      else notify('error', '无法切换账号', '账号已移除，请重新选择');
+    });
+  }, -1), [run]);
+
   const close = async () => {
     if (dialog?.kind === 'update' && state?.update.phase) return;
     if (busyRef.current && dialog?.kind !== 'login') return;
@@ -107,5 +115,5 @@ export function useDeckController() {
   const refresh = () => void run('正在刷新', () => backend().RefreshAll(), setState);
   const savePreferences = (preferences: Preferences) => void run('正在保存', () => backend().SavePreferences(preferences));
 
-  return {state, dialog, setDialog, busy, loadError, automaticError: automatic.error, run, load, close, login, importAuth, useCredit, menu, openSettings, refresh, savePreferences};
+  return {state, dialog, setDialog, busy: busy || state?.tray_busy || '', loadError, automaticError: automatic.error, run, load, close, login, importAuth, useCredit, menu, openSettings, refresh, savePreferences};
 }

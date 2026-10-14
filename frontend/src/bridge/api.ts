@@ -13,7 +13,7 @@ export interface Usage {plan: string; five_hour: QuotaWindow | null; weekly: Quo
 export interface Credit {id: string; reset_type: string; status: string; granted_at: string; expires_at: string | null; title: string | null; description: string | null}
 export interface Credits {available_count: number; credits: Credit[] | null; queried_at: string}
 export interface Account {id: string; account_id: string; email: string; alias: string; plan: string; current: boolean; auth_error: string; usage: Usage | null; credits: Credits | null; usage_error: string; credits_error: string; pending_reset: ResetRequest | null}
-export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean}
+export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean; tray_busy?: string}
 export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]; removes_current: boolean}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
 export interface AuthImportPreview extends PreviewAccount {id: string; existing: boolean; unchanged: boolean}
@@ -62,7 +62,7 @@ interface Backend {
   PrepareConsume(id: string, creditID: string): Promise<ResetRequest>;
   Consume(id: string, requestID: string): Promise<ConsumeResult>;
 }
-declare global {interface Window {runtime?: {EventsOnMultiple(event: string, callback: (state: State) => void, count: number): () => void}; go: {main: {App: Backend}}}}
+declare global {interface Window {runtime?: {EventsOnMultiple<T = State>(event: string, callback: (value: T) => void, count: number): () => void}; go: {main: {App: Backend}}}}
 export function backend(): Backend {
   if (!window.go?.main?.App) throw new Error('请通过 Wails 启动程序');
   return window.go.main.App;

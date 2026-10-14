@@ -22,7 +22,7 @@ it('别名草稿不被后台推送覆盖，保存失败后可以继续编辑', a
   let update!: (value: State) => void;
   const Rename = vi.fn().mockRejectedValueOnce(new Error('保存失败')).mockResolvedValue(undefined);
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Rename}}});
-  vi.stubGlobal('runtime', {EventsOnMultiple: (_event: string, callback: (value: State) => void) => {update = callback; return () => {}}});
+  vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (value: State) => void) => {if (event === 'deck:state') update = callback; return () => {}}});
   render(<App />);
   await act(async () => {});
   await press('原别名 操作');

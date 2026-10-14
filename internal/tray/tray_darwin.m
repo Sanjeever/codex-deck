@@ -2,21 +2,28 @@
 
 extern void codexDeckTrayShow(void);
 extern void codexDeckTrayQuit(void);
+extern void codexDeckTrayRefresh(void);
+extern void codexDeckTraySwitch(const char *id);
 
 @interface CodexDeckTrayTarget : NSObject
 - (void)showWindow:(id)sender;
 - (void)quitApp:(id)sender;
+- (void)refresh:(id)sender;
+- (void)switchAccount:(id)sender;
 @end
 
 @implementation CodexDeckTrayTarget
 - (void)showWindow:(id)sender { codexDeckTrayShow(); }
 - (void)quitApp:(id)sender { codexDeckTrayQuit(); }
+- (void)refresh:(id)sender { codexDeckTrayRefresh(); }
+- (void)switchAccount:(NSMenuItem *)sender { codexDeckTraySwitch([sender.representedObject UTF8String]); }
 @end
 
 static NSStatusItem *statusItem;
 static CodexDeckTrayTarget *target;
 static NSMenuItem *applicationQuitItem;
 static id applicationQuitTarget;
+static NSMenuItem *currentItem, *quotaItem, *updatedItem, *statusMessageItem, *refreshItem, *switchItem;
 
 static void onMainThread(void (^action)(void)) {
     if ([NSThread isMainThread]) {
@@ -55,6 +62,18 @@ bool codexDeckTrayStart(const unsigned char *icon, int length) {
             }
         }
         NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Codex Deck"];
+        menu.autoenablesItems = NO;
+        currentItem = [menu addItemWithTitle:@"未识别当前账号" action:nil keyEquivalent:@""];
+        quotaItem = [menu addItemWithTitle:@"5H 未知 · Weekly 未知" action:nil keyEquivalent:@""];
+        updatedItem = [menu addItemWithTitle:@"尚未查询" action:nil keyEquivalent:@""];
+        statusMessageItem = [menu addItemWithTitle:@"" action:nil keyEquivalent:@""];
+        for (NSMenuItem *item in @[currentItem, quotaItem, updatedItem, statusMessageItem]) item.enabled = NO;
+        statusMessageItem.hidden = YES;
+        refreshItem = [menu addItemWithTitle:@"刷新当前账号" action:@selector(refresh:) keyEquivalent:@""];
+        refreshItem.target = target;
+        refreshItem.enabled = NO;
+        switchItem = [menu addItemWithTitle:@"切换账号" action:nil keyEquivalent:@""];
+        switchItem.enabled = NO;
         NSMenuItem *show = [menu addItemWithTitle:@"显示窗口" action:@selector(showWindow:) keyEquivalent:@""];
         show.target = target;
         NSMenuItem *quit = [menu addItemWithTitle:@"退出" action:@selector(quitApp:) keyEquivalent:@""];
@@ -64,6 +83,35 @@ bool codexDeckTrayStart(const unsigned char *icon, int length) {
         ready = true;
     });
     return ready;
+}
+
+void codexDeckTrayUpdate(const char *payload) {
+    NSString *json = [[NSString alloc] initWithUTF8String:payload];
+    // 状态推送可能持有 Go 业务锁，异步更新避免主线程与业务线程互相等待。
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (statusItem != nil) {
+            NSDictionary *menu = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+            currentItem.title = menu[@"current"];
+            quotaItem.title = menu[@"quota"];
+            updatedItem.title = menu[@"updated"];
+            statusMessageItem.title = menu[@"status"];
+            statusMessageItem.hidden = [menu[@"status"] length] == 0;
+            refreshItem.enabled = [menu[@"refresh_enabled"] boolValue];
+            NSMenu *accounts = [[NSMenu alloc] initWithTitle:@"切换账号"];
+            accounts.autoenablesItems = NO;
+            for (NSDictionary *account in menu[@"accounts"]) {
+                NSMenuItem *item = [accounts addItemWithTitle:account[@"title"] action:@selector(switchAccount:) keyEquivalent:@""];
+                item.target = target;
+                item.representedObject = account[@"id"];
+                item.enabled = [account[@"enabled"] boolValue];
+                item.state = [account[@"current"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+            }
+            switchItem.submenu = accounts;
+            switchItem.enabled = accounts.numberOfItems > 0;
+            [accounts release];
+        }
+        [json release];
+    });
 }
 
 void codexDeckTrayStop(void) {
