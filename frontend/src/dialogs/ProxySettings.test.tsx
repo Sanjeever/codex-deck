@@ -22,6 +22,7 @@ function setup(initial = createState()) {
   const api = {
     SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state),
     GetAutoStart: vi.fn(async () => false), SetAutoStart: vi.fn(async (enabled: boolean) => enabled),
+    GetCLIProxy: vi.fn(async () => ({path: 'D:/isolated/codex/.env', variables: []})),
     TestNetwork: vi.fn(async (_config: NetworkConfig) => {}), SaveConfiguration,
     Backup: vi.fn(async () => {}), CheckUpdate: vi.fn(async () => {}),
   };
