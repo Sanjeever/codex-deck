@@ -15,7 +15,8 @@
     "@heroui/react": "^3.2.6",
     "@heroui/styles": "^3.2.6",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

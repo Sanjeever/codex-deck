@@ -54,6 +54,38 @@ func TestCheckRelease(t *testing.T) {
 	}
 }
 
+func TestCheckReleasePreservesNotes(t *testing.T) {
+	for _, test := range []struct{ name, notes string }{
+		{"markdown", "## 新增\n\n- 支持 **托盘额度**。\n\n[发布说明](https://github.com/Sanjeever/codex-deck/releases)\n"},
+		{"empty", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewEncoder(w).Encode(map[string]any{
+					"tag_name": "v1.4.0", "body": test.notes,
+					"html_url": "https://github.com/" + Repository + "/releases/tag/v1.4.0",
+					"assets": []map[string]any{{
+						"name":                 "codex-deck_1.4.0_windows_amd64.zip",
+						"browser_download_url": "https://github.com/" + Repository + "/releases/download/v1.4.0/codex-deck_1.4.0_windows_amd64.zip",
+					}},
+				}); err != nil {
+					t.Error(err)
+				}
+			}))
+			defer server.Close()
+			manager := New("1.3.2", nil)
+			manager.Endpoint, manager.Platform = server.URL, "windows_amd64"
+			if err := manager.Check(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			state := manager.State()
+			if state.Notes != test.notes || state.Version != "1.4.0" || state.URL == "" {
+				t.Fatalf("release notes changed or update unavailable: %+v", state)
+			}
+		})
+	}
+}
+
 func TestExtractAndRejectTraversal(t *testing.T) {
 	for _, name := range []string{"codex-deck.exe", "../outside"} {
 		t.Run(name, func(t *testing.T) {

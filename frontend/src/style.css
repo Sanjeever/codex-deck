@@ -50,6 +50,15 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .settings-dialog {height: min(560px, 100%);}
 .settings-tabs {display: flex; flex-direction: column; min-height: 0; flex: 1; padding-top: 16px;}
 .settings-content {overflow-y: auto; padding: 20px 0 8px; color: var(--foreground);}
+.release-notes {max-height: 256px; overflow-y: auto; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; scrollbar-width: thin;}
+.release-notes > * + * {margin-top: 12px;}
+.release-notes :is(h1, h2, h3, h4, h5, h6) {font-size: 14px; font-weight: 600;}
+.release-notes ul {list-style: disc; padding-left: 20px;}
+.release-notes ol {list-style: decimal; padding-left: 20px;}
+.release-notes li + li {margin-top: 6px;}
+.release-notes :is(li, blockquote) > p + p {margin-top: 8px;}
+.release-notes a {text-decoration: underline; text-underline-offset: 2px;}
+.release-notes pre {overflow-x: auto; white-space: pre-wrap;}
 .button {border-radius: 6px;}
 .input {border-radius: 6px;}
 .toast {border-radius: 6px;}

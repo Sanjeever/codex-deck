@@ -75,7 +75,8 @@ it('发现新版本不自动弹窗，设置入口可查看更新并主动打开�
     expect(screen.getByRole('heading', {name: '更新程序'})).toBeTruthy();
     expect(screen.getByRole('button', {name: '下载并安装'})).toBeTruthy();
     expect(install).not.toHaveBeenCalled();
-    expect((screen.getByText('更新内容').closest('details') as HTMLDetailsElement).open).toBe(false);
+    expect(await within(screen.getByRole('region', {name: '更新日志'})).findByText('更新说明')).toBeTruthy();
+    expect(screen.getByText('更新说明').closest('details')).toBeNull();
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
