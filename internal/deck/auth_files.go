@@ -11,7 +11,8 @@ import (
 type AuthImportPreview struct {
 	ID string `json:"id"`
 	PreviewAccount
-	Existing bool `json:"existing"`
+	Existing  bool `json:"existing"`
+	Unchanged bool `json:"unchanged"`
 }
 
 type pendingAuthImport struct {
@@ -63,12 +64,16 @@ func (s *Service) PrepareAuthImport(path string) (AuthImportPreview, error) {
 		if existing.UserID != account.UserID || existing.AccountID != account.AccountID {
 			continue
 		}
+		preview.Existing = true
+		preview.Alias = existing.Alias
+		if sameCredentials(account.Tokens, existing.Tokens) {
+			preview.Unchanged = true
+			return preview, nil
+		}
 		if err := rejectOlderAuth(account.Tokens, existing.Tokens); err != nil {
 			return AuthImportPreview{}, err
 		}
 		pending.existingID = existing.ID
-		preview.Existing = true
-		preview.Alias = existing.Alias
 		break
 	}
 	s.authImport = pending
@@ -96,6 +101,10 @@ func (s *Service) ConfirmAuthImport(id string) error {
 		}
 		if existing.ID != pending.existingID {
 			return fmt.Errorf("账号列表已变化，请重新导入")
+		}
+		if sameCredentials(account.Tokens, existing.Tokens) {
+			s.authImport = nil
+			return nil
 		}
 		if err := rejectOlderAuth(account.Tokens, existing.Tokens); err != nil {
 			return err

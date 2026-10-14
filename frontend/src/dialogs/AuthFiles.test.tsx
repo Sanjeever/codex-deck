@@ -31,6 +31,19 @@ it.each([false, true])('导入新账号直接更新列表，取消文件选择�
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+it('相同凭据导入直接结束，不要求确认或显示成功通知', async () => {
+  const account = createAccount(); const state = createState({accounts: [account]});
+  const preview = {id: 'unchanged-preview', email: account.email, account_id: account.account_id, alias: '', existing: true, unchanged: true};
+  const ConfirmAuthImport = vi.fn();
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), ImportAuth: vi.fn(async () => preview), ConfirmAuthImport}}});
+  render(<App />); await act(async () => {});
+  await chooseImport();
+  expect(ConfirmAuthImport).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByText('账号凭据已更新')).toBeNull();
+  expect(screen.getByText(account.email)).toBeTruthy();
+});
+
 it('重复账号需要确认，失败保留确认界面，隐私模式隐藏身份', async () => {
   const account = createAccount({email: 'private@example.test', account_id: 'workspace-secret'});
   const state = createState({accounts: [account]}); state.preferences.privacy = true;

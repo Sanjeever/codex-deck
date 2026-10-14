@@ -120,6 +120,7 @@ func TestAuthImportRejectsInvalidAndOlderCredentials(t *testing.T) {
 	}
 	old := account.Tokens
 	old.LastRefresh = old.LastRefresh.Add(-time.Hour)
+	old.RefreshToken = "older-refresh"
 	oldData, err := encodeCLIAuth(old)
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +153,9 @@ func TestAuthImportRechecksCredentialsAndCancellation(t *testing.T) {
 	s := testService(t)
 	account := testAccount(t)
 	addTestAccount(t, s, account)
-	path := writeTestAuth(t, account.Tokens)
+	imported := account.Tokens
+	imported.RefreshToken = "imported-refresh"
+	path := writeTestAuth(t, imported)
 	preview, err := s.PrepareAuthImport(path)
 	if err != nil {
 		t.Fatal(err)
@@ -193,5 +196,104 @@ func TestAuthImportRejectsPreviewAfterRestore(t *testing.T) {
 	}
 	if len(s.store.Snapshot().Accounts) != 0 {
 		t.Fatal("旧导入改写恢复数据")
+	}
+}
+
+func TestAuthImportIdenticalCredentialsDoesNotChangeState(t *testing.T) {
+	for _, offset := range []time.Duration{-time.Hour, 0, time.Hour} {
+		t.Run(offset.String(), func(t *testing.T) {
+			s := testService(t)
+			account := testAccount(t)
+			account.Alias = "保留别名"
+			account.AuthError = "请重新登录"
+			addTestAccount(t, s, account)
+			before, err := os.ReadFile(s.store.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			imported := account.Tokens
+			imported.LastRefresh = imported.LastRefresh.Add(offset)
+			preview, err := s.PrepareAuthImport(writeTestAuth(t, imported))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !preview.Existing || !preview.Unchanged || preview.Alias != account.Alias {
+				t.Fatal("未识别相同凭据")
+			}
+			after, err := os.ReadFile(s.store.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) || s.backupPending {
+				t.Fatal("相同凭据导入改写记录或安排备份")
+			}
+		})
+	}
+}
+
+func TestAuthImportAllowsConfirmedCredentialsWithEqualOrMissingTime(t *testing.T) {
+	for _, missingTime := range []bool{false, true} {
+		t.Run(map[bool]string{false: "equal", true: "missing"}[missingTime], func(t *testing.T) {
+			s := testService(t)
+			account := testAccount(t)
+			addTestAccount(t, s, account)
+			imported := account.Tokens
+			imported.RefreshToken = "confirmed-import"
+			if missingTime {
+				imported.LastRefresh = time.Time{}
+			}
+			preview, err := s.PrepareAuthImport(writeTestAuth(t, imported))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !preview.Existing || preview.Unchanged {
+				t.Fatal("不同凭据未要求确认")
+			}
+			if err := s.ConfirmAuthImport(preview.ID); err != nil {
+				t.Fatal(err)
+			}
+			if s.store.Snapshot().Accounts[0].Tokens.RefreshToken != imported.RefreshToken {
+				t.Fatal("未保存用户确认的凭据")
+			}
+			if err := s.cli.Write(account.Tokens); err != nil {
+				t.Fatal(err)
+			}
+			s.mu.Lock()
+			s.syncCLIAccount(true)
+			s.mu.Unlock()
+			if s.store.Snapshot().Accounts[0].Tokens.RefreshToken != imported.RefreshToken {
+				t.Fatal("CLI 覆盖用户刚确认的导入结果")
+			}
+		})
+	}
+}
+
+func TestAuthImportConfirmationSkipsCredentialsAlreadySaved(t *testing.T) {
+	s := testService(t)
+	account := testAccount(t)
+	addTestAccount(t, s, account)
+	imported := account.Tokens
+	imported.RefreshToken = "already-saved"
+	preview, err := s.PrepareAuthImport(writeTestAuth(t, imported))
+	if err != nil {
+		t.Fatal(err)
+	}
+	account.Tokens = imported
+	if err := s.saveAccount(account); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(s.store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ConfirmAuthImport(preview.ID); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(s.store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) || s.backupPending {
+		t.Fatal("确认时重复保存相同凭据或安排备份")
 	}
 }

@@ -100,7 +100,7 @@ export function useDeckController() {
 
   const importAuth = () => void run('正在导入账号', () => backend().ImportAuth(), preview => {
     if (!preview) return;
-    if (preview.existing) setDialog({kind: 'import', preview});
+    if (preview.existing && !preview.unchanged) setDialog({kind: 'import', preview});
   });
 
   const openSettings = (tab: SettingsTab = 'general') => {if (state) setDialog({kind: 'settings', tab})};
