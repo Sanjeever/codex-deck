@@ -50,7 +50,9 @@ func cliEnvStatements(data []byte) ([]cliEnvStatement, error) {
 	}
 	var statements []cliEnvStatement
 	var pending strings.Builder
+	offset := 0
 	for _, line := range strings.SplitAfter(string(data), "\n") {
+		offset += len(line)
 		pending.WriteString(line)
 		values, err := godotenv.Unmarshal(pending.String())
 		if err != nil {
@@ -64,6 +66,11 @@ func cliEnvStatements(data []byte) ([]cliEnvStatement, error) {
 			statement.key, statement.value = key, value
 		}
 		if managedProxyKey(statement.key) {
+			resolved, err := godotenv.Unmarshal(string(data[:offset]))
+			if err != nil {
+				return nil, fmt.Errorf("CLI 代理变量解析失败")
+			}
+			statement.value = resolved[statement.key]
 			statement.prefix = envAssignment.FindString(statement.raw)
 			// 库解析后的值相同才说明 # 位于值外，保留该行注释。
 			for i, char := range statement.raw {
@@ -71,7 +78,7 @@ func cliEnvStatements(data []byte) ([]cliEnvStatement, error) {
 					continue
 				}
 				before, err := godotenv.Unmarshal(statement.raw[:i])
-				if err == nil && before[statement.key] == statement.value {
+				if err == nil && before[statement.key] == values[statement.key] {
 					statement.comment = strings.TrimRight(statement.raw[i:], "\r\n")
 					break
 				}

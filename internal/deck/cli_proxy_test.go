@@ -29,6 +29,26 @@ func TestCLIProxyCreateAndRead(t *testing.T) {
 	}
 }
 
+func TestCLIProxyReadsReferencesToEarlierFileVariables(t *testing.T) {
+	c := CLI{Home: t.TempDir()}
+	path := filepath.Join(c.Home, ".env")
+	before := "ADDRESS=http://localhost:7897\nhttp_proxy=${ADDRESS} # 地址复用\nhttps_proxy=${ADDRESS}\n"
+	if err := os.WriteFile(path, []byte(before), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := c.ReadProxy()
+	if err != nil || len(state.Variables) != 2 || state.Variables[0].Value != "http://localhost:7897" {
+		t.Fatalf("未按文件变量读取代理: %+v %v", state, err)
+	}
+	if _, err := c.SaveProxy(CLIProxyChange{URL: "http://localhost:7898", Expected: state.Variables}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(after), "ADDRESS=http://localhost:7897\n") || !strings.Contains(string(after), "# 地址复用\n") {
+		t.Fatal("改写了其他变量或丢失注释")
+	}
+}
+
 func TestCLIProxyPreservesOtherContentAndComments(t *testing.T) {
 	c := CLI{Home: t.TempDir()}
 	path := filepath.Join(c.Home, ".env")
