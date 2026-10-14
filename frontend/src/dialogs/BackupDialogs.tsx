@@ -27,6 +27,7 @@ export function BackupDialogs({dialog, state, busy, run, onClose, setDialog}: Di
         {preview.removed.map(a => <p key={a.account_id + a.email} className="text-xs text-muted break-all">{accountName(a, privacy)} · {workspaceName(a.account_id, privacy)}</p>)}
       </div>}
       <p className="text-sm text-muted">备份包含 {preview.accounts} 个账号。CLI 当前账号保持不变。</p>
+      {preview.removes_current && <p className="text-sm text-muted">CLI 当前账号将移出列表，刷新账号或重启应用后会重新导入。</p>}
       {preview.webdav_url !== state.settings.webdav_url && <p className="text-sm text-muted break-all">恢复后的 WebDAV 地址为 {preview.webdav_url || '未配置'}。</p>}
     </div>
   </DialogFrame>;

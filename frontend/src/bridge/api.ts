@@ -14,7 +14,7 @@ export interface Credit {id: string; reset_type: string; status: string; granted
 export interface Credits {available_count: number; credits: Credit[] | null; queried_at: string}
 export interface Account {id: string; account_id: string; email: string; alias: string; plan: string; current: boolean; auth_error: string; usage: Usage | null; credits: Credits | null; usage_error: string; credits_error: string; pending_reset: ResetRequest | null}
 export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean}
-export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]}
+export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]; removes_current: boolean}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
 export interface AuthImportPreview extends PreviewAccount {id: string; existing: boolean; unchanged: boolean}
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}

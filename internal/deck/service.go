@@ -229,12 +229,13 @@ type PreviewAccount struct {
 	AccountID string `json:"account_id"`
 }
 type RestorePreview struct {
-	ID         string           `json:"id"`
-	Accounts   int              `json:"accounts"`
-	WebDAVURL  string           `json:"webdav_url"`
-	ModifiedAt *time.Time       `json:"modified_at" ts_type:"string | null"`
-	Added      []PreviewAccount `json:"added"`
-	Removed    []PreviewAccount `json:"removed"`
+	ID             string           `json:"id"`
+	Accounts       int              `json:"accounts"`
+	WebDAVURL      string           `json:"webdav_url"`
+	ModifiedAt     *time.Time       `json:"modified_at" ts_type:"string | null"`
+	Added          []PreviewAccount `json:"added"`
+	Removed        []PreviewAccount `json:"removed"`
+	RemovesCurrent bool             `json:"removes_current"`
 }
 
 func accountDifference(left, right []Account) []PreviewAccount {
@@ -271,7 +272,19 @@ func (s *Service) PrepareRestore() (RestorePreview, error) {
 	s.restoreMeta = meta
 	s.restoreSource = settings
 	s.restoreID = uuid.NewString()
-	return RestorePreview{ID: s.restoreID, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL, ModifiedAt: meta.ModifiedAt, Added: accountDifference(d.Accounts, local.Accounts), Removed: accountDifference(local.Accounts, d.Accounts)}, nil
+	preview := RestorePreview{ID: s.restoreID, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL, ModifiedAt: meta.ModifiedAt, Added: accountDifference(d.Accounts, local.Accounts), Removed: accountDifference(local.Accounts, d.Accounts)}
+	for _, view := range s.state().Accounts {
+		if !view.Current {
+			continue
+		}
+		account, err := findAccount(local, view.ID)
+		if err != nil {
+			return RestorePreview{}, err
+		}
+		preview.RemovesCurrent = len(accountDifference([]Account{account}, d.Accounts)) > 0
+		break
+	}
+	return preview, nil
 }
 
 func (s *Service) CancelRestore() {
@@ -306,6 +319,7 @@ func (s *Service) Restore(id string) error {
 	if s.restore == nil || id != s.restoreID || s.store.Snapshot().Settings != source {
 		return fmt.Errorf("恢复预览已失效，请重新下载")
 	}
+	current, cliErr := s.cli.ReadAccount()
 	if err := s.store.Update(func(d *Data) error {
 		localNetwork := d.Network
 		*d = cloneData(*s.restore)
@@ -317,6 +331,13 @@ func (s *Service) Restore(id string) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	s.cliIdentity = Identity{}
+	s.importError = ""
+	if cliErr != nil {
+		s.importError = fmt.Sprintf("同步 CLI 账号失败: %v", cliErr)
+	} else if current != nil {
+		s.cliIdentity = Identity{UserID: current.UserID, AccountID: current.AccountID, Email: current.Email, Plan: current.Plan}
 	}
 	s.generation++
 	s.restore = nil

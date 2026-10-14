@@ -57,12 +57,12 @@ it('等待浏览器登录时可取消，不把主动取消显示成登录失败'
   expect(RefreshAll).not.toHaveBeenCalled();
 });
 
-it('恢复预览隐藏账号身份，取消时通知后端且不执行恢复', async () => {
+it.each([false, true])('恢复预览隐藏身份并按需提示重新导入，移除当前账号=%s', async removesCurrent => {
   const state = createState({settings: {webdav_url: 'https://example.test/backup', webdav_username: '', webdav_password: ''}});
   state.preferences.privacy = true;
   const CancelRestore = vi.fn(async () => {});
   const Restore = vi.fn();
-  const preview = {id: 'preview', accounts: 1, webdav_url: state.settings.webdav_url, modified_at: null, added: [createAccount()], removed: []};
+  const preview = {id: 'preview', accounts: 1, webdav_url: state.settings.webdav_url, modified_at: null, added: [createAccount()], removed: [], removes_current: removesCurrent};
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), PrepareRestore: vi.fn(async () => preview), CancelRestore, Restore}}});
   render(<App />);
   await act(async () => {});
@@ -70,6 +70,7 @@ it('恢复预览隐藏账号身份，取消时通知后端且不执行恢复', a
   await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
   await press('恢复备份');
   expect(screen.getByText('新增账号')).toBeTruthy();
+  expect(!!screen.queryByText('CLI 当前账号将移出列表，刷新账号或重启应用后会重新导入。')).toBe(removesCurrent);
   expect(screen.getByRole('dialog').innerHTML).not.toContain('account@example.test');
   expect(screen.getByRole('dialog').innerHTML).not.toContain('workspace');
   await press('取消');

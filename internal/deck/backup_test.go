@@ -37,6 +37,83 @@ func waitBackup(t *testing.T, s *Service) {
 	}
 }
 
+func TestRestorePreviewCurrentAccountAndReimport(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"plan_type":"plus"}`))
+	}))
+	defer server.Close()
+	for _, name := range []string{"same_identity", "different_user", "different_workspace", "cli_changed", "logged_out"} {
+		t.Run(name, func(t *testing.T) {
+			s := testService(t)
+			s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
+			current := testAccount(t)
+			addTestAccount(t, s, current)
+			if err := s.Switch(current.ID, false); err != nil {
+				t.Fatal(err)
+			}
+			remote := current
+			remote.ID = "remote-record"
+			switch name {
+			case "different_user":
+				remote.UserID = "other-user"
+			case "different_workspace":
+				remote.AccountID = "other-workspace"
+			case "cli_changed":
+				other := current
+				other.ID = "other-record"
+				other.UserID = "other-user"
+				other.Tokens.IDToken = testToken(t, other.UserID, other.AccountID, time.Now().Add(time.Hour))
+				other.Tokens.AccessToken = other.Tokens.IDToken
+				addTestAccount(t, s, other)
+				if err := s.cli.Write(other.Tokens); err != nil {
+					t.Fatal(err)
+				}
+			case "logged_out":
+				if err := os.Remove(filepath.Join(s.cli.Home, "auth.json")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			remote.Tokens.AccountID = remote.AccountID
+			remote.Tokens.IDToken = testToken(t, remote.UserID, remote.AccountID, time.Now().Add(time.Hour))
+			remote.Tokens.AccessToken = remote.Tokens.IDToken
+			settings, _, closeServer := testWebDAV(t)
+			defer closeServer()
+			if err := s.SaveSettings(settings); err != nil {
+				t.Fatal(err)
+			}
+			waitBackup(t, s)
+			if err := uploadBackup(Data{Version: Version, Settings: settings, Accounts: []Account{remote}}); err != nil {
+				t.Fatal(err)
+			}
+			preview, err := s.PrepareRestore()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantRemoval := name != "same_identity" && name != "logged_out"
+			if preview.RemovesCurrent != wantRemoval {
+				t.Fatal("恢复预览未按 CLI 实际身份判断当前账号是否移除")
+			}
+			if err := s.Restore(preview.ID); err != nil {
+				t.Fatal(err)
+			}
+			// 认证文件变更事件会在自动查询前同步 CLI 实际身份。
+			s.mu.Lock()
+			s.syncCLIAccount(true)
+			s.mu.Unlock()
+			if state := s.RefreshAutomatic(); len(state.Accounts) != 1 {
+				t.Fatal("自动刷新重新加入恢复移除的当前账号")
+			}
+			wantCount := 1
+			if wantRemoval {
+				wantCount = 2
+			}
+			if state := s.RefreshAll(); len(state.Accounts) != wantCount {
+				t.Fatal("显式刷新未按实际 CLI 身份重新导入账号")
+			}
+		})
+	}
+}
+
 func TestBackupFirstConnectionAndTwoDeviceConflict(t *testing.T) {
 	settings, root, closeServer := testWebDAV(t)
 	defer closeServer()
