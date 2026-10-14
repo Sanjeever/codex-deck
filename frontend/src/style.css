@@ -19,9 +19,9 @@ body {margin: 0; background: var(--background); color: var(--foreground); font-s
 .deck-header {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 24px;}
 .deck-heading {display: flex; align-items: center; flex-wrap: wrap; gap: 24px;}
 .deck-workspaces {display: flex; gap: 4px;}
-.table-scroll {overflow-x: auto;}
-table {width: 100%; border-collapse: separate; border-spacing: 0 6px; table-layout: fixed; min-width: 850px;}
-th {font-weight: 400; font-size: 12px; color: var(--muted); text-align: left; padding: 4px 16px 14px;}
+.table-scroll {overflow: auto; max-height: calc(100dvh - 220px); scrollbar-width: thin;}
+table {width: 100%; border-collapse: separate; border-spacing: 0 6px; table-layout: fixed;}
+th {position: sticky; top: 0; z-index: 1; background: var(--background); font-weight: 400; font-size: 12px; color: var(--muted); text-align: left; padding: 4px 16px 14px;}
 td {vertical-align: top; padding: 22px 16px; background: var(--surface);}
 th:first-child {width: 29%;}
 th:nth-child(2) {width: 10%;}
@@ -34,6 +34,8 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .meter {--meter-fill: var(--foreground);}
 .quota-low {background: var(--warning);}
 .current-tag {white-space: nowrap; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--default); color: var(--foreground);}
+.table-compact td {padding-top: 12px; padding-bottom: 12px;}
+.table-scroll td {overflow-wrap: anywhere;}
 .row-menu {height: 30px; min-width: 26px; padding: 0 4px; border-radius: 5px; font-weight: 600; cursor: pointer;}
 .row-menu:hover, .row-menu[data-hovered] {background: var(--default);}
 .row-menu:focus-visible {outline: 2px solid var(--focus); outline-offset: 2px;}
@@ -54,8 +56,17 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .toast {border-radius: 6px;}
 .toast__title, .toast__description {overflow-wrap: anywhere;}
 @media (max-width: 960px) {.app-shell {padding: 28px 20px;} td, th {padding-left: 12px; padding-right: 12px;}}
+@media (max-width: 960px) {
+  th:first-child {width: 28%;}
+  th:nth-child(2) {width: 8%;}
+  th:nth-child(3), th:nth-child(4) {width: 18%;}
+  th:nth-child(5) {width: 10%;}
+  th:last-child {width: 18%;}
+  td, th {padding-left: 8px; padding-right: 8px;}
+  .table-scroll td .button {padding-left: 8px; padding-right: 8px;}
+}
 
-.account-toolbar {display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px;}
+.account-toolbar {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;}
 .sort-trigger {font-size: 12px; color: var(--muted); padding: 6px 10px; border-radius: 6px; cursor: pointer;}
 .sort-trigger:hover, .sort-trigger[data-hovered] {background: var(--surface);}
 .usage-stale .quota {opacity: 0.6;}

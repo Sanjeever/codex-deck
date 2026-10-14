@@ -21,6 +21,7 @@ interface AccountTableProps {
 export function AccountTable({accounts, privacy, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
   const [now, setNow] = useState(Date.now);
   const [filter, setFilter] = useState<AccountFilter>('all');
+  const [compact, setCompact] = useState(false);
   useEffect(() => {
     const update = () => setNow(Date.now());
     const timer = window.setInterval(update, 60_000);
@@ -33,6 +34,7 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
     <div className="account-toolbar">
       <TextField value={query} onChange={onQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" /></TextField>
       <div className="flex flex-wrap items-center gap-2">
+      <Button size="sm" variant="ghost" aria-label="紧凑行距" aria-pressed={compact} onPress={() => setCompact(value => !value)}>{compact ? '紧凑行距' : '标准行距'}</Button>
       <Dropdown>
         <Dropdown.Trigger className="sort-trigger" aria-label="账号筛选">{{all: '全部账号', low: '额度不足', auth: '需重新登录'}[filter]} ▾</Dropdown.Trigger>
         <Dropdown.Popover><Dropdown.Menu aria-label="账号筛选" selectionMode="single" selectedKeys={[filter]} onAction={key => setFilter(String(key) as AccountFilter)}>
@@ -54,7 +56,7 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
       </div>
     </div>
     {visible.length === 0 && <div className="py-12 text-center text-muted"><p>没有匹配账号</p><Button size="sm" variant="ghost" onPress={() => {setFilter('all'); onQuery('')}}>清除筛选</Button></div>}
-    <div className="table-scroll"><table aria-label="Codex 账号">
+    <div className={`table-scroll ${compact ? 'table-compact' : ''}`}><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
       <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} onAction={onAction} />)}</tbody>
     </table></div>
