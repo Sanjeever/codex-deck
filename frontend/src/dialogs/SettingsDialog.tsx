@@ -6,6 +6,7 @@ import {notify} from '../notifications/Notifications';
 import {Field} from './DialogFrame';
 import type {RunOperation} from '../app/useDeckController';
 import {ProxySettings} from './ProxySettings';
+import {CLIProxySettings} from './CLIProxySettings';
 import {useSettingsDraft, type SettingsTab} from './useSettingsDraft';
 
 interface SettingsDialogProps {
@@ -23,14 +24,15 @@ interface SettingsDialogProps {
 const tabs: Record<SettingsTab, string> = {general: '常规', network: '网络', backup: '备份', about: '关于'};
 
 export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore, onUpdate, initialTab}: SettingsDialogProps) {
-  const {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, unsaved, save} = useSettingsDraft(state, run, initialTab);
+  const {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, cliProxy, unsaved, save} = useSettingsDraft(state, run, initialTab, busy);
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const requestLeave = (action: () => void) => {if (unsaved) setLeave(() => action); else action()};
   const close = () => {if (busy) return; if (leave) setLeave(null); else requestLeave(() => void onClose())};
   const preferences = draft.preferences;
   const changePreferences = (patch: Partial<typeof preferences>) => setDraft({...draft, preferences: {...preferences, ...patch}});
   const settings = draft.settings;
-  const backupBlocked = dirty.network || dirty.backup;
+  const deckNetworkDirty = JSON.stringify(draft.network) !== JSON.stringify(state.network);
+  const backupBlocked = deckNetworkDirty || dirty.backup;
 
   return <Modal.Backdrop isOpen onOpenChange={open => {if (!open) close()}} isDismissable={!busy} isKeyboardDismissDisabled={!!busy}>
     <Modal.Container size="lg" scroll="inside" placement="center">
@@ -75,8 +77,9 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
                 </div>}
               </div>
             </Tabs.Panel>
-            <Tabs.Panel id="network">
-              <ProxySettings draft={draft.network} onChange={network => setDraft({...draft, network})} busy={busy} privacy={state.preferences.privacy} run={run} unsaved={dirty.network} />
+            <Tabs.Panel id="network" className="space-y-8">
+              <ProxySettings draft={draft.network} onChange={network => setDraft({...draft, network})} busy={busy} privacy={state.preferences.privacy} run={run} unsaved={deckNetworkDirty} />
+              <CLIProxySettings proxy={cliProxy} deckNetwork={draft.network} busy={busy} privacy={state.preferences.privacy} safeText={safeText} run={run} />
             </Tabs.Panel>
             <Tabs.Panel id="backup" className="space-y-6">
               <div className="space-y-4">
@@ -109,10 +112,10 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
                 <Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control><Label>自动检查更新</Label></Switch.Content>
               </Switch>
               <div className="space-y-3">
-                {dirty.network && <p className="text-xs text-muted">请先保存网络设置。</p>}
+                {deckNetworkDirty && <p className="text-xs text-muted">请先保存网络设置。</p>}
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" isDisabled={!!busy || !!state.update.phase || dirty.network} onPress={() => void run('正在检查更新', () => backend().CheckUpdate(), () => {if (!state.update.version) notify('info', '检查更新完成')})}>检查更新</Button>
-                  {state.update.version && <Button size="sm" variant="secondary" isDisabled={!!busy || dirty.network} onPress={() => requestLeave(onUpdate)}>新版本 v{state.update.version}</Button>}
+                  <Button size="sm" variant="secondary" isDisabled={!!busy || !!state.update.phase || deckNetworkDirty} onPress={() => void run('正在检查更新', () => backend().CheckUpdate(), () => {if (!state.update.version) notify('info', '检查更新完成')})}>检查更新</Button>
+                  {state.update.version && <Button size="sm" variant="secondary" isDisabled={!!busy || deckNetworkDirty} onPress={() => requestLeave(onUpdate)}>新版本 v{state.update.version}</Button>}
                 </div>
                 {state.update.error && <p className="text-xs text-danger break-words">{safeText(state.update.error)}</p>}
                 {state.update.checked_at && <p className="text-xs text-muted">上次检查 · {dateTime(state.update.checked_at)}</p>}

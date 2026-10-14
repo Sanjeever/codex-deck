@@ -3,6 +3,9 @@ export interface BuildInfo {version: string; commit: string; development: boolea
 export interface UpdateState {phase: string; error: string; version: string; notes: string; url: string; checked_at: string | null; downloaded: number; total: number}
 export interface Settings {webdav_url: string; webdav_username: string; webdav_password: string}
 export interface NetworkConfig {mode: 'environment' | 'direct' | 'custom'; url: string; username: string; password: string}
+export interface CLIProxyVariable {key: string; value: string}
+export interface CLIProxyState {path: string; variables: CLIProxyVariable[]}
+export interface CLIProxyChange {url: string; remove: boolean; expected: CLIProxyVariable[]}
 export interface Configuration {network: NetworkConfig; settings: Settings; preferences: {low_quota_notify: boolean; low_quota_threshold: number; disable_update_check: boolean}}
 export interface ConfigurationSaveResult {configuration: Configuration | null; section: string; error: string}
 export interface QuotaWindow {remaining_percent: number; reset_at: string | null}
@@ -25,6 +28,9 @@ interface Backend {
   SaveConfiguration(config: Configuration): Promise<ConfigurationSaveResult>;
   SaveNetwork(config: NetworkConfig): Promise<NetworkConfig>;
   TestNetwork(config: NetworkConfig): Promise<void>;
+  GetCLIProxy(): Promise<CLIProxyState>;
+  SaveCLIProxy(change: CLIProxyChange): Promise<CLIProxyState>;
+  TestCLIProxy(address: string): Promise<void>;
   ImportAuth(): Promise<AuthImportPreview | null>;
   ConfirmAuthImport(id: string): Promise<void>;
   CancelAuthImport(): Promise<void>;

@@ -2,13 +2,14 @@ import {useEffect, useState} from 'react';
 import {backend, type Configuration, type State} from '../bridge/api';
 import {notify} from '../notifications/Notifications';
 import type {RunOperation} from '../app/useDeckController';
+import {useCLIProxyDraft} from './useCLIProxyDraft';
 
 export type SettingsTab = 'general' | 'network' | 'backup' | 'about';
 export interface SettingsError {section: string; text: string}
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'preferences'>, run: RunOperation, initialTab: SettingsTab = 'general') {
+export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'preferences'>, run: RunOperation, initialTab: SettingsTab = 'general', busy = '') {
   const [draft, setDraft] = useState<Configuration>(() => ({
     network: {...state.network}, settings: {...state.settings},
     preferences: {low_quota_notify: state.preferences.low_quota_notify, low_quota_threshold: state.preferences.low_quota_threshold, disable_update_check: !!state.preferences.disable_update_check},
@@ -18,11 +19,12 @@ export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'pr
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const [savedAutoStart, setSavedAutoStart] = useState<boolean | null>(null);
   const [error, setError] = useState<SettingsError | null>(null);
+  const cliProxy = useCLIProxyDraft(tab === 'network', busy, run);
   const localDirty = !same(draft, saved);
   const autoStartDirty = autoStart !== savedAutoStart;
   const dirty = {
     general: autoStartDirty || draft.preferences.low_quota_notify !== saved.preferences.low_quota_notify || draft.preferences.low_quota_threshold !== saved.preferences.low_quota_threshold,
-    network: !same(draft.network, saved.network),
+    network: !same(draft.network, saved.network) || cliProxy.dirty,
     backup: !same(draft.settings, saved.settings),
     about: draft.preferences.disable_update_check !== saved.preferences.disable_update_check,
   };
@@ -48,6 +50,13 @@ export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'pr
       setDraft(result.configuration); setSaved(result.configuration);
       localSaved = true;
     }
+    if (cliProxy.dirty) {
+      try {await cliProxy.save(); localSaved = true}
+      catch (error) {
+        const text = `${localSaved ? 'Deck 设置已保存，' : ''}CLI 代理保存失败：${errorText(error)}`;
+        setError({section: 'network', text}); setTab('network'); throw new Error(text);
+      }
+    }
     if (autoStartDirty && autoStart !== null) {
       try {
         const actual = await backend().SetAutoStart(autoStart);
@@ -61,5 +70,5 @@ export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'pr
     }
   }, () => notify('success', '设置已保存'));
 
-  return {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, unsaved: localDirty || autoStartDirty, save};
+  return {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, cliProxy, unsaved: localDirty || autoStartDirty || cliProxy.dirty, save};
 }

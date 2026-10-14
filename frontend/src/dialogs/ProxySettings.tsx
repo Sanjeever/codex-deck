@@ -18,7 +18,8 @@ export function ProxySettings({draft, onChange, busy, privacy, run, unsaved}: {d
       throw error;
     }
   });
-  return <section aria-label="网络代理" className="space-y-5">
+  return <section aria-label="Codex Deck 代理" className="space-y-5">
+    <h3 className="text-sm font-medium">Codex Deck 代理</h3>
     <RadioGroup orientation="horizontal" value={draft.mode} isDisabled={!!busy} onChange={mode => change({...draft, mode: mode as NetworkConfig['mode']})} className="flex flex-wrap gap-x-5 gap-y-3">
       <Label className="w-full">代理模式</Label>
       {Object.entries(modes).map(([mode, label]) => <Radio key={mode} value={mode}>
