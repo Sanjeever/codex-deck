@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {accountName, privateText, usageStale, visibleAccounts} from './accounts';
+import {accountName, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts} from './accounts';
 import type {Account} from '../bridge/api';
 
 const now = Date.now();
@@ -24,4 +24,17 @@ it('窗口恢复时间已过时将缓存标记为过期', () => {
  a.usage!.queried_at = new Date(now - 1000).toISOString();
  a.usage!.five_hour!.reset_at = new Date(now - 500).toISOString();
  expect(usageStale(a, now)).toBe(true);
+});
+
+it('相对时间区分更新时长、未知恢复和等待服务端确认', () => {
+ expect(updatedAgo(new Date(now - 30_000).toISOString(), now)).toBe('刚刚更新');
+ expect(updatedAgo(new Date(now - 180_000).toISOString(), now)).toBe('3 分钟前更新');
+ expect(updatedAgo(new Date(now - 7_200_000).toISOString(), now)).toBe('2 小时前更新');
+ expect(recoveryText(null, now)).toBe('恢复时间未知');
+ expect(recoveryText(new Date(now + 42 * 60_000).toISOString(), now)).toBe('约 42 分钟后恢复');
+ expect(recoveryText(new Date(now).toISOString(), now)).toBe('等待确认恢复');
+ const a = account('low', 0);
+ a.usage!.five_hour!.reset_at = new Date(now - 1000).toISOString();
+ expect(recoveryText(a.usage!.five_hour!.reset_at, now)).toBe('等待确认恢复');
+ expect(a.usage!.five_hour!.remaining_percent).toBe(0);
 });

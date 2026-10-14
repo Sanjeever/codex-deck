@@ -1,7 +1,7 @@
-import type {RefObject} from 'react';
+import {useEffect, useState, type RefObject} from 'react';
 import {Button, Dropdown, Input, Meter, TextField} from '@heroui/react';
 import type {Account, QuotaWindow} from '../bridge/api';
-import {accountName, creditCount, dateTime, pendingConsumption, privateText, usageStale, visibleAccounts, workspaceName} from './accounts';
+import {accountName, creditCount, dateTime, LOW_QUOTA_THRESHOLD, pendingConsumption, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts, workspaceName} from './accounts';
 
 interface AccountTableProps {
   accounts: Account[];
@@ -17,7 +17,14 @@ interface AccountTableProps {
 }
 
 export function AccountTable({accounts, privacy, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
-  const visible = visibleAccounts(accounts, query, sort);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const timer = window.setInterval(update, 60_000);
+    document.addEventListener('visibilitychange', update);
+    return () => {window.clearInterval(timer); document.removeEventListener('visibilitychange', update)};
+  }, []);
+  const visible = visibleAccounts(accounts, query, sort, now);
   if (accounts.length === 0) return <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
   return <>
     <div className="account-toolbar">
@@ -34,15 +41,15 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
     {visible.length === 0 && <p className="py-12 text-center text-muted">没有匹配账号</p>}
     <div className="table-scroll"><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
-      <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} onAction={onAction} />)}</tbody>
+      <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} onAction={onAction} />)}</tbody>
     </table></div>
   </>;
 }
 
-function AccountRow({account, accounts, privacy, busy, onAction}: Pick<AccountTableProps, 'accounts' | 'privacy' | 'busy' | 'onAction'> & {account: Account}) {
+function AccountRow({account, accounts, privacy, busy, now, onAction}: Pick<AccountTableProps, 'accounts' | 'privacy' | 'busy' | 'onAction'> & {account: Account; now: number}) {
   const name = accountName(account, privacy);
   const count = creditCount(account);
-  const stale = usageStale(account);
+  const stale = usageStale(account, now);
   const pending = pendingConsumption(account);
   const safeText = (value: string) => privateText(value, privacy, accounts);
   return <tr className={stale ? 'usage-stale' : undefined}>
@@ -52,11 +59,11 @@ function AccountRow({account, accounts, privacy, busy, onAction}: Pick<AccountTa
       <p className="mt-1 text-xs text-muted" title={workspaceName(account.account_id, privacy)}>工作区 {workspaceName(account.account_id, privacy).slice(0, 12)}</p>
       {account.auth_error && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => onAction('login', account)}><span title={safeText(account.auth_error)}>需重新登录</span></Button>}
       {account.usage_error && <p className="row-error" title={safeText(account.usage_error)}>用量查询失败</p>}
-      {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{stale ? '已过期' : account.usage_error ? '缓存' : '更新'} {new Date(account.usage.queried_at).toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', hour12: false})}</p>}
+      {account.usage && <p className="mt-2 text-[11px] text-muted" title={dateTime(account.usage.queried_at)}>{stale ? '已过期 · ' : account.usage_error ? '缓存 · ' : ''}{updatedAgo(account.usage.queried_at, now)}</p>}
     </td>
     <td><span className="plan-name">{account.plan || '未知'}</span></td>
-    <td><Quota label="5H" value={account.usage?.five_hour} /></td>
-    <td><Quota label="Weekly" value={account.usage?.weekly} /></td>
+    <td><Quota label="5H" value={account.usage?.five_hour} now={now} /></td>
+    <td><Quota label="Weekly" value={account.usage?.weekly} now={now} /></td>
     <td><Button size="sm" variant="ghost" className="px-0" isDisabled={!!busy} onPress={() => onAction('credits', account)}>{count == null ? '未知' : `${count} 张`}</Button></td>
     <td><div className="flex justify-end items-center gap-2">
       {!account.current && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => onAction('switch', account)}>切换</Button>}
@@ -76,14 +83,15 @@ function AccountRow({account, accounts, privacy, busy, onAction}: Pick<AccountTa
   </tr>;
 }
 
-function Quota({label, value}: {label: string; value: QuotaWindow | null | undefined}) {
+function Quota({label, value, now}: {label: string; value: QuotaWindow | null | undefined; now: number}) {
   if (!value) return <span className="text-muted">未知</span>;
   const percent = Math.round(value.remaining_percent * 10) / 10;
   return <div className="quota">
     <Meter aria-label={`${label} 剩余`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
       <Meter.Output className="tabular-nums text-sm">剩余 {percent}%</Meter.Output>
-      <Meter.Track className="h-1"><Meter.Fill className={percent < 15 ? 'quota-low' : ''} /></Meter.Track>
+      <Meter.Track className="h-1"><Meter.Fill className={percent < LOW_QUOTA_THRESHOLD ? 'quota-low' : ''} /></Meter.Track>
     </Meter>
-    <p className="mt-2 text-xs text-muted" title={dateTime(value.reset_at)}>{value.reset_at ? `${new Date(value.reset_at).toLocaleString('zh-CN', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false})} 恢复` : '恢复时间未知'}</p>
+    {percent < LOW_QUOTA_THRESHOLD && <p className="mt-1 text-xs text-warning">额度偏低</p>}
+    <p className="mt-2 text-xs text-muted" title={dateTime(value.reset_at)}>{recoveryText(value.reset_at, now)}</p>
   </div>;
 }
