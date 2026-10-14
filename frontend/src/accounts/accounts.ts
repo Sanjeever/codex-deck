@@ -40,6 +40,7 @@ export function privateText(text: string, privacy: boolean, accounts: Pick<Accou
 }
 
 export function accountName(a: PreviewAccount, privacy = false) {
+  if (privacy && !a.alias && 'id' in a && typeof a.id === 'string') return `账号 ${a.id.slice(0, 8)}`;
   return privateText(a.alias || a.email || a.account_id, privacy, [a]);
 }
 export function workspaceName(id: string, privacy: boolean) {return privacy ? '••••••••' : id}
@@ -50,17 +51,27 @@ export function usageStale(account: Account, now = Date.now()) {
   return now - at >= 300_000 || [usage.five_hour, usage.weekly].some(window => window?.reset_at && Date.parse(window.reset_at) <= now && at < Date.parse(window.reset_at));
 }
 
-export function visibleAccounts(accounts: Account[], query: string, sort: string, now = Date.now()) {
+export type AccountFilter = 'all' | 'low' | 'auth';
+
+export function visibleAccounts(accounts: Account[], query: string, sort: string, now = Date.now(), filter: AccountFilter = 'all', privacy = false) {
   const needle = query.trim().toLocaleLowerCase();
   const quota = (a: Account) => {
     if (!a.usage || usageStale(a, now)) return null;
+    if (sort === 'five_hour') return a.usage.five_hour?.remaining_percent ?? null;
+    if (sort === 'weekly') return a.usage.weekly?.remaining_percent ?? null;
     const values = [a.usage.five_hour, a.usage.weekly].flatMap(window => window ? [window.remaining_percent] : []);
     return values.length ? Math.min(...values) : null;
   };
-  return accounts.filter(a => [a.alias, a.email, a.account_id].some(value => value.toLocaleLowerCase().includes(needle))).sort((a, b) => {
+  return accounts.filter(a => {
+    const fields = privacy ? [accountName(a, true)] : [a.alias, a.email, a.account_id];
+    if (!fields.some(value => value.toLocaleLowerCase().includes(needle))) return false;
+    if (filter === 'auth') return !!a.auth_error;
+    if (filter === 'low') return !a.auth_error && !!a.usage && !usageStale(a, now) && [a.usage.five_hour, a.usage.weekly].some(window => window && window.remaining_percent < LOW_QUOTA_THRESHOLD);
+    return true;
+  }).sort((a, b) => {
     if (a.current !== b.current) return a.current ? -1 : 1;
-    if (sort === 'name') return accountName(a).localeCompare(accountName(b), 'zh-CN');
-    if (sort === 'quota') {
+    if (sort === 'name') return accountName(a, privacy).localeCompare(accountName(b, privacy), 'zh-CN');
+    if (sort === 'quota' || sort === 'five_hour' || sort === 'weekly') {
       const left = quota(a), right = quota(b);
       if (left == null || right == null) return left == null ? right == null ? 0 : 1 : -1;
       return right - left;

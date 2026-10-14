@@ -7,9 +7,26 @@ const account = (id: string, quota: number | null, age = 0): Account => ({id, ac
 
 it('隐私模式覆盖邮箱、工作区和错误信息，不修改源账号', () => {
  const a = account('alice', 30);
- expect(accountName(a, true)).toBe('••••@••••');
+ expect(accountName(a, true)).toBe('账号 alice');
  expect(privateText(`账号 ${a.email}，工作区 ${a.account_id}`, true, [a])).toBe('账号 ••••@••••，工作区 ••••••••');
  expect(a.email).toBe('alice@example.test');
+});
+
+it('按额度窗口排序，筛选排除未知和过期数据，当前账号在匹配范围内置顶', () => {
+ const high5h = account('five', 80);
+ high5h.usage!.weekly = {remaining_percent: 3, reset_at: null};
+ const highWeekly = account('week', 10);
+ highWeekly.usage!.weekly = {remaining_percent: 90, reset_at: null};
+ const auth = {...account('auth', 0), auth_error: '需要重新登录'};
+ const accounts = [highWeekly, account('unknown', null), account('expired', 0, 300_001), high5h, auth];
+ expect(visibleAccounts(accounts, '', 'five_hour', now).map(a => a.id)).toEqual(['five', 'week', 'auth', 'unknown', 'expired']);
+ expect(visibleAccounts(accounts, '', 'weekly', now).map(a => a.id)).toEqual(['week', 'five', 'unknown', 'expired', 'auth']);
+ expect(visibleAccounts(accounts, '', '', now, 'low').map(a => a.id)).toEqual(['week', 'five']);
+ expect(visibleAccounts(accounts, '', '', now, 'auth').map(a => a.id)).toEqual(['auth']);
+ expect(visibleAccounts(accounts, 'five', '', now, 'low').map(a => a.id)).toEqual(['five']);
+ expect(visibleAccounts(accounts, '账号 five', 'weekly', now, 'all', true).map(a => a.id)).toEqual(['five']);
+ expect(visibleAccounts(accounts, 'five@example.test', '', now, 'all', true)).toEqual([]);
+ expect(accountName(high5h, true)).toBe(accountName([...accounts].reverse().find(a => a.id === 'five')!, true));
 });
 it('搜索不区分大小写，当前置顶，未知与过期额度排在有效缓存之后', () => {
  const accounts = [account('low', 10), account('unknown', null), account('expired', 100, 300_001), {...account('current', 3), current: true}, account('high', 80)];

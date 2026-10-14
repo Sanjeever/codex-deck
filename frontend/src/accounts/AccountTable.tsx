@@ -3,6 +3,7 @@ import {Button, Dropdown, Input, Meter, TextField} from '@heroui/react';
 import type {Account, QuotaWindow} from '../bridge/api';
 import {ErrorDetails} from '../app/ErrorDetails';
 import {accountName, creditCount, dateTime, LOW_QUOTA_THRESHOLD, pendingConsumption, privateText, recoveryText, updatedAgo, usageStale, visibleAccounts, workspaceName} from './accounts';
+import type {AccountFilter} from './accounts';
 
 interface AccountTableProps {
   accounts: Account[];
@@ -19,27 +20,40 @@ interface AccountTableProps {
 
 export function AccountTable({accounts, privacy, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
   const [now, setNow] = useState(Date.now);
+  const [filter, setFilter] = useState<AccountFilter>('all');
   useEffect(() => {
     const update = () => setNow(Date.now());
     const timer = window.setInterval(update, 60_000);
     document.addEventListener('visibilitychange', update);
     return () => {window.clearInterval(timer); document.removeEventListener('visibilitychange', update)};
   }, []);
-  const visible = visibleAccounts(accounts, query, sort, now);
+  const visible = visibleAccounts(accounts, query, sort, now, filter, privacy);
   if (accounts.length === 0) return <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
   return <>
     <div className="account-toolbar">
       <TextField value={query} onChange={onQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" /></TextField>
+      <div className="flex flex-wrap items-center gap-2">
       <Dropdown>
-        <Dropdown.Trigger isDisabled={!!busy} className="sort-trigger">{({name: '账号名称', quota: '剩余额度'} as Record<string, string>)[sort] || '默认排序'} ▾</Dropdown.Trigger>
-        <Dropdown.Popover><Dropdown.Menu aria-label="账号排序" onAction={key => onSort(String(key) === 'default' ? '' : String(key))}>
-          <Dropdown.Item id="default">默认排序</Dropdown.Item>
-          <Dropdown.Item id="name">账号名称</Dropdown.Item>
-          <Dropdown.Item id="quota">剩余额度</Dropdown.Item>
+        <Dropdown.Trigger className="sort-trigger" aria-label="账号筛选">{{all: '全部账号', low: '额度不足', auth: '需重新登录'}[filter]} ▾</Dropdown.Trigger>
+        <Dropdown.Popover><Dropdown.Menu aria-label="账号筛选" selectionMode="single" selectedKeys={[filter]} onAction={key => setFilter(String(key) as AccountFilter)}>
+          <Dropdown.Item id="all">全部账号</Dropdown.Item>
+          <Dropdown.Item id="low">额度不足</Dropdown.Item>
+          <Dropdown.Item id="auth">需重新登录</Dropdown.Item>
         </Dropdown.Menu></Dropdown.Popover>
       </Dropdown>
+      <Dropdown>
+        <Dropdown.Trigger isDisabled={!!busy} className="sort-trigger" aria-label="账号排序">{({name: '账号名称', quota: '综合剩余额度', five_hour: '5H 剩余额度', weekly: 'Weekly 剩余额度'} as Record<string, string>)[sort] || '默认排序'} ▾</Dropdown.Trigger>
+        <Dropdown.Popover><Dropdown.Menu aria-label="账号排序" selectionMode="single" selectedKeys={[sort || 'default']} onAction={key => onSort(String(key) === 'default' ? '' : String(key))}>
+          <Dropdown.Item id="default">默认排序</Dropdown.Item>
+          <Dropdown.Item id="name">账号名称</Dropdown.Item>
+          <Dropdown.Item id="quota">综合剩余额度</Dropdown.Item>
+          <Dropdown.Item id="five_hour">5H 剩余额度</Dropdown.Item>
+          <Dropdown.Item id="weekly">Weekly 剩余额度</Dropdown.Item>
+        </Dropdown.Menu></Dropdown.Popover>
+      </Dropdown>
+      </div>
     </div>
-    {visible.length === 0 && <p className="py-12 text-center text-muted">没有匹配账号</p>}
+    {visible.length === 0 && <div className="py-12 text-center text-muted"><p>没有匹配账号</p><Button size="sm" variant="ghost" onPress={() => {setFilter('all'); onQuery('')}}>清除筛选</Button></div>}
     <div className="table-scroll"><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
       <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} onAction={onAction} />)}</tbody>

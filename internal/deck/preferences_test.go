@@ -21,3 +21,19 @@ func TestPreferencesPersistWithoutChangingCredentials(t *testing.T) {
 		t.Fatal("接受未知排序")
 	}
 }
+
+func TestQuotaWindowSortPreferencesPersist(t *testing.T) {
+	s := testService(t)
+	for _, sort := range []string{"five_hour", "weekly"} {
+		if err := s.SavePreferences(Preferences{Sort: sort}); err != nil {
+			t.Fatal(err)
+		}
+		reloaded, err := OpenStore(s.store.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reloaded.Snapshot().Preferences.Sort != sort {
+			t.Fatalf("排序未保存: %s", sort)
+		}
+	}
+}
