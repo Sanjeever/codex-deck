@@ -33,24 +33,49 @@ static void onMainThread(void (^action)(void)) {
     }
 }
 
+static void drawMenuBarCard(NSRect rect, CGFloat angle) {
+    NSBezierPath *card = [NSBezierPath bezierPathWithRoundedRect:rect xRadius:1.8 yRadius:1.8];
+    NSAffineTransform *transform = [NSAffineTransform transform];
+    [transform translateXBy:NSMidX(rect) yBy:NSMidY(rect)];
+    [transform rotateByDegrees:angle];
+    [transform translateXBy:-NSMidX(rect) yBy:-NSMidY(rect)];
+    [card transformUsingAffineTransform:transform];
+
+    // 清除被前层卡片遮挡的线条，保留透明背景供系统着色。
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext.currentContext.compositingOperation = NSCompositingOperationDestinationOut;
+    [NSColor.blackColor setFill];
+    [card fill];
+    [NSGraphicsContext restoreGraphicsState];
+    [NSColor.blackColor setStroke];
+    card.lineWidth = 1.2;
+    [card stroke];
+}
+
 static NSImage *menuBarIcon(void) {
     // 矢量绘制保持 Retina 清晰度，模板图像由系统按菜单栏外观着色。
     NSImage *image = [NSImage imageWithSize:NSMakeSize(18, 18) flipped:NO drawingHandler:^BOOL(NSRect rect) {
-        [NSColor.blackColor setStroke];
-        NSBezierPath *frame = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1.25, 2.75, 15.5, 12.5) xRadius:2.25 yRadius:2.25];
-        frame.lineWidth = 1.5;
-        [frame stroke];
+        drawMenuBarCard(NSMakeRect(1.9, 4.8, 11, 11), 12);
+        drawMenuBarCard(NSMakeRect(3.5, 3.4, 11, 11), 5);
+        drawMenuBarCard(NSMakeRect(5.1, 1.8, 11, 11), -7);
 
+        [NSGraphicsContext saveGraphicsState];
+        NSAffineTransform *transform = [NSAffineTransform transform];
+        [transform translateXBy:10.6 yBy:7.3];
+        [transform rotateByDegrees:-7];
+        [transform translateXBy:-10.6 yBy:-7.3];
+        [transform concat];
         NSBezierPath *prompt = [NSBezierPath bezierPath];
-        prompt.lineWidth = 1.5;
+        prompt.lineWidth = 1.4;
         prompt.lineCapStyle = NSLineCapStyleRound;
         prompt.lineJoinStyle = NSLineJoinStyleRound;
-        [prompt moveToPoint:NSMakePoint(4.75, 11.25)];
-        [prompt lineToPoint:NSMakePoint(7.25, 9)];
-        [prompt lineToPoint:NSMakePoint(4.75, 6.75)];
-        [prompt moveToPoint:NSMakePoint(9.5, 6.75)];
-        [prompt lineToPoint:NSMakePoint(13, 6.75)];
+        [prompt moveToPoint:NSMakePoint(8, 9.3)];
+        [prompt lineToPoint:NSMakePoint(10.2, 7.5)];
+        [prompt lineToPoint:NSMakePoint(8, 5.7)];
+        [prompt moveToPoint:NSMakePoint(11.7, 5.7)];
+        [prompt lineToPoint:NSMakePoint(13.5, 5.7)];
         [prompt stroke];
+        [NSGraphicsContext restoreGraphicsState];
         return YES;
     }];
     image.template = YES;

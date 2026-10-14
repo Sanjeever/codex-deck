@@ -30,6 +30,8 @@ wails build -clean
 
 Wails 构建命令安装依赖并构建前端。产物位于 `build/bin`，macOS 产物为完整 `.app`。单独运行 Vite 不提供 Go 绑定，不能代替完整桌面验证。
 
+macOS 构建通过 `postBuildHooks` 调用 [`scripts/darwin-icon.sh`](../scripts/darwin-icon.sh)，从 `build/appicon.png` 生成含标准倍率和 Retina 图层的完整 ICNS，再更新本地临时签名。Wails 当前内置编码器缺少标准倍率图层，会使 Finder 列表小图标显示异常；上游修复后可重新评估此步骤。脚本使用系统自带的 `sips`、`iconutil` 和 `codesign`，CI 的 Developer ID 签名与公证在此之后执行。
+
 Linux 使用 WebKitGTK 4.1 时，开发、构建及涉及桌面依赖的 Go 检查均需携带 `webkit2_41` 标签，保持编译与运行库一致。例如：
 
 ```sh
