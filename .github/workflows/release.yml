@@ -101,6 +101,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -110,5 +111,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create '${{ github.ref_name }}' release/* --verify-tag --draft --title '${{ github.ref_name }}' --generate-notes
-          gh release edit '${{ github.ref_name }}' --draft=false --latest
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" release/* --verify-tag --draft --title "$GITHUB_REF_NAME" --notes-file "docs/releases/$version.md"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
