@@ -32,7 +32,7 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
   if (accounts.length === 0) return <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
   return <>
     <div className="account-toolbar">
-      <TextField value={query} onChange={onQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" /></TextField>
+      <TextField value={query} onChange={onQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" title="搜索账号（Ctrl / ⌘ + F）" aria-keyshortcuts="Control+f Meta+f" /></TextField>
       <div className="flex flex-wrap items-center gap-2">
       <Button size="sm" variant="ghost" aria-label="紧凑行距" aria-pressed={compact} onPress={() => setCompact(value => !value)}>{compact ? '紧凑行距' : '标准行距'}</Button>
       <Dropdown>

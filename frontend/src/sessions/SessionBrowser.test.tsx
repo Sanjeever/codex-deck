@@ -9,18 +9,73 @@ const summary = (id = 'one'): SessionSummary => ({id, title: `请求 ${id}`, pro
 const listPage = (sessions = [summary()]): SessionListPage => ({sessions, projects: ['/project'], dates: ['2026-10-13'], source: 'D:/isolated/sessions', missing: false, next_cursor: '', issues: []});
 const event = (id = 'e1', text = '用户正文', kind = 'user'): SessionEvent => ({id, turn: 1, kind, text, text_cursor: 0});
 const detailPage = (id = 'one', events = [event()]): SessionReadPage => ({session: summary(id), revision: 'r1', events, turns: [{number: 1, event_id: events[0]?.id ?? 'e1'}, {number: 2, event_id: 'later'}], next_cursor: '', issues: []});
-function Harness({privacy = false, active = true}: {privacy?: boolean; active?: boolean}) {
+function Harness({privacy = false, active = true, keyboardEnabled = true}: {privacy?: boolean; active?: boolean; keyboardEnabled?: boolean}) {
   const browser = useSessionBrowser(active);
-  return <SessionBrowser browser={browser} active={active} safeText={text => privateText(text, privacy, [{email: 'test@example.test', account_id: 'workspace-secret'}])} />;
+  return <SessionBrowser browser={browser} active={active} keyboardEnabled={keyboardEnabled} safeText={text => privateText(text, privacy, [{email: 'test@example.test', account_id: 'workspace-secret'}])} />;
 }
 const flush = async (ms = 0) => {await act(async () => {await vi.advanceTimersByTimeAsync(ms)})};
 let api: {CancelSessionRequest: ReturnType<typeof vi.fn>; ListSessions: ReturnType<typeof vi.fn>; ReadSession: ReturnType<typeof vi.fn>; FindSessionMatches: ReturnType<typeof vi.fn>; ReadSessionText: ReturnType<typeof vi.fn>};
 beforeEach(() => {
   vi.useFakeTimers();
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {configurable: true, value: vi.fn()});
   api = {CancelSessionRequest: vi.fn(async () => {}), ListSessions: vi.fn(async () => listPage()), ReadSession: vi.fn(async query => detailPage(query.id)), FindSessionMatches: vi.fn(async () => ({matches: [], next_cursor: '', issues: []})), ReadSessionText: vi.fn(async () => ({text: '下一段真实输出', next_offset: 0}))};
   vi.stubGlobal('go', {main: {App: api}});
 });
-afterEach(() => {cleanup(); vi.useRealTimers()});
+afterEach(() => {cleanup(); vi.useRealTimers(); Reflect.deleteProperty(Element.prototype, 'scrollIntoView')});
+
+it('列表方向键只移动焦点，Enter 才读取详情，停用期间不响应导航', async () => {
+  api.ListSessions.mockResolvedValue(listPage([summary(), summary('two')]));
+  const view = render(<Harness />); await flush();
+  const input = screen.getByRole('textbox', {name: '搜索全部会话'});
+  input.focus();
+  fireEvent.keyDown(input, {key: 'ArrowDown'});
+  const first = screen.getByRole('button', {name: /请求 one/});
+  const second = screen.getByRole('button', {name: /请求 two/});
+  expect(document.activeElement).toBe(first);
+  view.rerender(<Harness keyboardEnabled={false} />);
+  fireEvent.keyDown(first, {key: 'ArrowDown'});
+  expect(document.activeElement).toBe(first);
+  view.rerender(<Harness />);
+  fireEvent.keyDown(first, {key: 'ArrowDown'});
+  expect(document.activeElement).toBe(second);
+  fireEvent.keyDown(second, {key: 'ArrowUp'});
+  expect(document.activeElement).toBe(first);
+  expect(api.ReadSession).not.toHaveBeenCalled();
+  fireEvent.keyDown(first, {key: 'ArrowDown'});
+  fireEvent.keyDown(second, {key: 'Enter'}); await flush(20);
+  expect(api.ReadSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id: 'two'}));
+});
+
+it('查找键盘跳转保留输入焦点并读取后续匹配，Esc 关闭后恢复按钮焦点', async () => {
+  api.FindSessionMatches.mockResolvedValueOnce({matches: [{event_id: 'e1', turn: 1, snippet: 'needle one', text_offset: 0}, {event_id: 'later', turn: 2, snippet: 'needle two', text_offset: 0}], next_cursor: 'next', issues: []}).mockResolvedValueOnce({matches: [{event_id: 'last', turn: 3, snippet: 'needle three', text_offset: 0}], next_cursor: '', issues: []});
+  api.ReadSession.mockImplementation(async query => detailPage(query.id, [event(query.event_id || 'e1', '正文')]));
+  const view = render(<Harness />); await flush();
+  fireEvent.click(screen.getByRole('button', {name: /请求 one/})); await flush(20);
+  fireEvent.click(screen.getByRole('button', {name: '查找'})); await flush();
+  const input = screen.getByRole('textbox', {name: '查找当前会话'});
+  fireEvent.change(input, {target: {value: 'needle'}}); await flush(300);
+  input.focus();
+  fireEvent.keyDown(input, {key: 'Enter'}); await flush(20);
+  expect(screen.getByText('1 / 2+')).toBeTruthy();
+  expect(document.activeElement).toBe(input);
+  expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({block: 'nearest'});
+  view.rerender(<Harness keyboardEnabled={false} />);
+  fireEvent.keyDown(input, {key: 'Enter'}); await flush(20);
+  expect(screen.getByText('1 / 2+')).toBeTruthy();
+  view.rerender(<Harness />);
+  fireEvent.keyDown(input, {key: 'Enter'}); await flush(20);
+  expect(screen.getByText('2 / 2+')).toBeTruthy();
+  fireEvent.keyDown(input, {key: 'Enter', shiftKey: true}); await flush(20);
+  expect(screen.getByText('1 / 2+')).toBeTruthy();
+  fireEvent.keyDown(input, {key: 'Enter'}); await flush(20);
+  fireEvent.keyDown(input, {key: 'Enter'}); await flush(20);
+  expect(api.FindSessionMatches).toHaveBeenLastCalledWith(expect.objectContaining({cursor: 'next'}));
+  expect(screen.getByText('3 / 3')).toBeTruthy();
+  expect(document.activeElement).toBe(input);
+  fireEvent.keyDown(input, {key: 'Escape'}); await flush();
+  expect(screen.queryByRole('textbox', {name: '查找当前会话'})).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('button', {name: '查找'}));
+});
 
 it('由真实请求展示来源、选择详情、筛选和后续分页', async () => {
   api.ListSessions.mockResolvedValueOnce({...listPage(), next_cursor: 'next-list'}).mockResolvedValueOnce(listPage([summary('two')]));

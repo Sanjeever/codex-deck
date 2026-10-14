@@ -24,7 +24,7 @@ export function useSessionBrowser(active: boolean) {
   const [mobileDetail, setMobileDetail] = useState(false);
   const [filter, setFilter] = useState('chat');
   const [selectedSearch, setSelectedSearch] = useState('');
-  const [target, setTarget] = useState<{event_id: string; text_offset: number} | null>(null);
+  const [target, setTarget] = useState<{event_id: string; text_offset: number; focus: boolean} | null>(null);
   const [detail, setDetail] = useState<DisplayPage | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -83,7 +83,11 @@ export function useSessionBrowser(active: boolean) {
       }
       loadedDetailKey.current = detailKey;
       setDetail(previous => append && previous?.revision === result.revision ? {...result, events: [...previous.events, ...result.events], textStarts: {...previous.textStarts, ...result.textStarts}} : result);
-      if (eventID) requestAnimationFrame(() => document.getElementById(`event-${eventID}`)?.focus());
+      if (eventID) requestAnimationFrame(() => {
+        const element = document.getElementById(`event-${eventID}`);
+        if (target?.focus === false) element?.scrollIntoView({block: 'nearest'});
+        else element?.focus();
+      });
     } catch (error) {if (request === detailRequest.current) setDetailError(errorText(error))}
     finally {if (request === detailRequest.current) {setDetailLoading(false); detailRequest.current = 0}}
   }, [id, filter, detail?.next_cursor, refreshVersion, target, initialEvent, initialOffset]);
@@ -100,9 +104,9 @@ export function useSessionBrowser(active: boolean) {
   const select = (session: SessionSummary) => {setSelected(session); setSelectedSearch(listSearch); setFilter(session.match_event_id ? 'all' : 'chat'); setTarget(null); setMobileDetail(true)};
   const focusSearch = () => {setMobileDetail(false); requestAnimationFrame(() => searchRef.current?.focus())};
   const refresh = () => setRefreshVersion(value => value + 1);
-  const jump = (match: Pick<SessionMatch, 'event_id' | 'text_offset'>) => {
+  const jump = (match: Pick<SessionMatch, 'event_id' | 'text_offset'>, focus = true) => {
     // Find and turn navigation intentionally return to the unfiltered timeline.
-    setFilter('all'); setTarget(match);
+    setFilter('all'); setTarget({...match, focus});
   };
   return {searchRef, search, setSearch, project, setProject, date, setDate, list, listSearch, listLoading, listError, loadList, refresh, refreshVersion,
     selected, selectedSearch, select, focusEventID: filter === 'all' ? target?.event_id ?? initialEvent : '', mobileDetail, setMobileDetail, focusSearch, filter, setFilter, detail, detailLoading, detailError, loadDetail, jump};

@@ -5,7 +5,7 @@ import {groupBy, Highlight, localDate, localTime, projectLabel, ReadIssues} from
 import {TimelineEvents} from './TimelineEvents';
 import {errorText, nextSessionRequest, type SessionBrowserController} from './useSessionBrowser';
 
-export function SessionDetail({browser: b, active, safeText}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string}) {
+export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string; keyboardEnabled: boolean}) {
   const [findQuery, setFindQuery] = useState('');
   const [showFind, setShowFind] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -16,12 +16,13 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
   const [expanded, setExpanded] = useState(false);
   const matchRequest = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
+  const findButton = useRef<HTMLButtonElement>(null);
   const id = b.selected?.id ?? '';
   const cancelFind = () => {
     const request = matchRequest.current; matchRequest.current = 0;
     if (request) void backend().CancelSessionRequest('find', request).catch(error => setFindError(errorText(error)));
   };
-  const find = async (append = false) => {
+  const find = async (append = false, focus = true) => {
     cancelFind();
     const request = nextSessionRequest(); matchRequest.current = request;
     setFinding(true); setFindError('');
@@ -30,7 +31,7 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
       if (request !== matchRequest.current) return;
       const combined = append && matches ? {...result, matches: [...matches.matches, ...result.matches]} : result;
       setMatches(combined);
-      if (append && result.matches.length) {setMatchIndex(matches?.matches.length ?? 0); b.jump(result.matches[0])}
+      if (append && result.matches.length) {setMatchIndex(matches?.matches.length ?? 0); b.jump(result.matches[0], focus)}
     } catch (error) {if (request === matchRequest.current) setFindError(errorText(error))}
     finally {if (request === matchRequest.current) {setFinding(false); matchRequest.current = 0}}
   };
@@ -43,13 +44,13 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
     // Search covers the whole file independently of displayed pages or filters.
   }, [id, findQuery, active, b.refreshVersion]);
   useEffect(() => {setFindQuery(''); setShowFind(false); setShowInfo(false); setExpanded(false); heading.current?.focus()}, [id]);
-  const jumpMatch = (direction: number) => {
+  const jumpMatch = (direction: number, focus = true) => {
     const values = matches?.matches ?? [];
-    if (!values.length) {if (matches?.next_cursor) void find(true); return}
+    if (!values.length) {if (matches?.next_cursor) void find(true, focus); return}
     const next = matchIndex < 0 ? direction < 0 ? values.length - 1 : 0 : matchIndex + direction;
-    if (next >= values.length && matches?.next_cursor) {void find(true); return}
+    if (next >= values.length && matches?.next_cursor) {void find(true, focus); return}
     const index = (next + values.length) % values.length;
-    setMatchIndex(index); b.jump(values[index]);
+    setMatchIndex(index); b.jump(values[index], focus);
   };
   const page = b.detail?.session.id === id ? b.detail : null;
   const session = page?.session ?? b.selected;
@@ -75,12 +76,17 @@ export function SessionDetail({browser: b, active, safeText}: {browser: SessionB
             <Button size="sm" variant="ghost" aria-label="跳到对话轮次" isDisabled={!page?.turns.length}>轮次</Button>
             <Dropdown.Popover><Dropdown.Menu aria-label="对话轮次" onAction={key => b.jump({event_id: String(key), text_offset: 0})}>{page?.turns.map(turn => <Dropdown.Item key={turn.event_id} id={turn.event_id} textValue={`第 ${turn.number} 轮`}>第 {turn.number} 轮</Dropdown.Item>)}</Dropdown.Menu></Dropdown.Popover>
           </Dropdown>
-          <Button size="sm" variant="ghost" aria-expanded={showFind} onPress={() => {setShowFind(value => !value); if (showFind) setFindQuery('')}}>查找</Button>
+          <Button ref={findButton} size="sm" variant="ghost" aria-expanded={showFind} onPress={() => {setShowFind(value => !value); if (showFind) setFindQuery('')}}>查找</Button>
         </div>
       </div>
       {showFind && <div className="session-find-bar">
-        <TextField aria-label="查找当前会话" value={findQuery} onChange={setFindQuery}><div className="session-find-input"><Input placeholder="查找当前会话…" autoComplete="off" autoFocus />{findQuery && <Button isIconOnly size="sm" variant="ghost" aria-label="清除会话查找" onPress={() => setFindQuery('')}>×</Button>}</div></TextField>
+        <TextField aria-label="查找当前会话" value={findQuery} onChange={setFindQuery}><div className="session-find-input"><Input placeholder="查找当前会话…" autoComplete="off" autoFocus onKeyDown={event => {
+          if (!active || !keyboardEnabled || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
+          if (event.key === 'Escape') {event.preventDefault(); event.stopPropagation(); setShowFind(false); setFindQuery(''); findButton.current?.focus()}
+          else if (event.key === 'Enter' && !finding && findQuery.trim()) {event.preventDefault(); jumpMatch(event.shiftKey ? -1 : 1, false)}
+        }} />{findQuery && <Button isIconOnly size="sm" variant="ghost" aria-label="清除会话查找" onPress={() => setFindQuery('')}>×</Button>}</div></TextField>
         {findQuery.trim() && <div className="session-find-matches"><span role="status">{finding ? '查找中…' : matches?.matches.length ? `${matchIndex + 1} / ${matches.matches.length}${matches.next_cursor ? '+' : ''}` : '无匹配事件'}</span><Button isIconOnly size="sm" variant="ghost" aria-label="上一个匹配事件" isDisabled={finding || !matches?.matches.length} onPress={() => jumpMatch(-1)}>↑</Button><Button isIconOnly size="sm" variant="ghost" aria-label="下一个匹配事件" isDisabled={finding || (!matches?.matches.length && !matches?.next_cursor)} onPress={() => jumpMatch(1)}>↓</Button></div>}
+        <kbd className="session-find-keys">Enter 下一个 · Shift Enter 上一个 · Esc 关闭</kbd>
       </div>}
       <div className="session-timeline">
         {findError && <div role="alert" className="session-error">{safeText(findError)}<Button size="sm" variant="ghost" onPress={() => void find()}>重试查找</Button></div>}

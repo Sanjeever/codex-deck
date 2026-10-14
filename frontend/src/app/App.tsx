@@ -33,10 +33,10 @@ export default function App() {
       <div className="deck-heading"><div className="flex items-baseline gap-2"><h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>{state && <span className="text-xs text-muted">v{state.build_info.version}</span>}</div><nav aria-label="工作区" className="deck-workspaces"><Button size="sm" variant={workspace === 'accounts' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'accounts'} onPress={() => setWorkspace('accounts')}>账号</Button><Button size="sm" variant={workspace === 'sessions' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'sessions'} onPress={() => setWorkspace('sessions')}>会话</Button></nav></div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && savePreferences({...state.preferences, privacy: !privacy})}>隐私</Button>
-        <Button variant="secondary" size="sm" aria-label={workspace === 'sessions' ? '刷新会话' : state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={workspace === 'sessions' ? sessions.listLoading : !!busy || !state} onPress={workspace === 'sessions' ? sessions.refresh : refresh}>{workspace === 'accounts' && state?.auto_refreshing && <Spinner size="sm" />}刷新</Button>
-        <Button variant="secondary" size="sm" isDisabled={!!busy || !state} onPress={() => openSettings()}>设置</Button>
+        <Button variant="secondary" size="sm" aria-keyshortcuts="Control+r Meta+r" aria-label={workspace === 'sessions' ? '刷新会话' : state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={workspace === 'sessions' ? sessions.listLoading : !!busy || !state} onPress={workspace === 'sessions' ? sessions.refresh : refresh}>{workspace === 'accounts' && state?.auto_refreshing && <Spinner size="sm" />}<span title="刷新（Ctrl / ⌘ + R）">刷新</span></Button>
+        <Button variant="secondary" size="sm" aria-keyshortcuts="Control+, Meta+," isDisabled={!!busy || !state} onPress={() => openSettings()}><span title="设置（Ctrl / ⌘ + ,）">设置</span></Button>
         {workspace === 'accounts' && <div className="flex items-center gap-1">
-          <Button size="sm" isDisabled={!!busy || !state} onPress={() => void login()}>添加账号</Button>
+          <Button size="sm" aria-keyshortcuts="Control+n Meta+n" isDisabled={!!busy || !state} onPress={() => void login()}><span title="添加账号（Ctrl / ⌘ + N）">添加账号</span></Button>
           <Dropdown>
             <Dropdown.Trigger aria-label="添加账号方式" isDisabled={!!busy || !state} className="row-menu">▾</Dropdown.Trigger>
             <Dropdown.Popover><Dropdown.Menu aria-label="添加账号方式" onAction={key => {if (key === 'import') importAuth(); else void login()}}>
@@ -62,7 +62,7 @@ export default function App() {
       onSort={sort => savePreferences({...state.preferences, sort})}
       onAction={menu} onAdd={() => void login()}
     /></div>}
-    {(workspace === 'sessions' || sessions.list !== null) && <SessionBrowser browser={sessions} active={workspace === 'sessions'} safeText={safeText} />}
+    {(workspace === 'sessions' || sessions.list !== null) && <SessionBrowser browser={sessions} active={workspace === 'sessions'} safeText={safeText} keyboardEnabled={!busy && !dialog} />}
     {state && <DialogHost
       state={state} dialog={dialog} busy={busy} run={run}
       onClose={close} setDialog={setDialog} useCredit={useCredit}

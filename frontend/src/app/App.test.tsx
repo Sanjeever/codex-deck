@@ -75,7 +75,7 @@ it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区'
     expect(document.body.innerHTML).not.toContain(account.email);
     expect(document.body.innerHTML).not.toContain(account.account_id);
     expect(screen.getByRole('button', {name: '隐私'}).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', {name: '••••@•••• 操作'})).toBeTruthy();
+    expect(screen.getByRole('button', {name: '账号 record 操作'})).toBeTruthy();
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
