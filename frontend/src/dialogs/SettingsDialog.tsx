@@ -38,7 +38,6 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
     <Modal.Container size="lg" scroll="inside" placement="center">
       {leave ? <Modal.Dialog>
         <Modal.Header><Modal.Heading>放弃未保存更改？</Modal.Heading></Modal.Header>
-        <Modal.Body><p>设置尚未保存。放弃后将丢失本次修改。</p></Modal.Body>
         <Modal.Footer>
           <Button variant="tertiary" onPress={() => setLeave(null)}>继续编辑</Button>
           <Button variant="danger" onPress={() => {const action = leave; setLeave(null); action()}}>放弃更改</Button>
@@ -95,7 +94,7 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
                 {backupBlocked && <p className="text-xs text-muted">请先保存网络与备份设置。</p>}
                 <div className="flex flex-wrap gap-2">
                   {state.backup.conflict && <Button variant="danger" size="sm" isDisabled={!!busy || backupBlocked} onPress={() => requestLeave(onOverwrite)}>覆盖远端</Button>}
-                  <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => void run('正在备份', () => backend().Backup(), () => notify('success', '备份成功'))}>立即备份</Button>
+                  <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => void run('正在备份', () => backend().Backup())}>立即备份</Button>
                   <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => requestLeave(() => void run('正在下载备份', () => backend().PrepareRestore(), onRestore))}>恢复备份</Button>
                 </div>
               </div>
@@ -114,7 +113,7 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
               <div className="space-y-3">
                 {deckNetworkDirty && <p className="text-xs text-muted">请先保存网络设置。</p>}
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" isDisabled={!!busy || !!state.update.phase || deckNetworkDirty} onPress={() => void run('正在检查更新', () => backend().CheckUpdate(), () => {if (!state.update.version) notify('info', '检查更新完成')})}>检查更新</Button>
+                  <Button size="sm" variant="secondary" isDisabled={!!busy || !!state.update.phase || deckNetworkDirty} onPress={() => void run('正在检查更新', () => backend().CheckUpdate())}>检查更新</Button>
                   {state.update.version && <Button size="sm" variant="secondary" isDisabled={!!busy || deckNetworkDirty} onPress={() => requestLeave(onUpdate)}>新版本 v{state.update.version}</Button>}
                 </div>
                 {state.update.error && <p className="text-xs text-danger break-words">{safeText(state.update.error)}</p>}
@@ -125,7 +124,6 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
           </Modal.Body>
         </Tabs>
         <Modal.Footer className="items-center">
-          <span className="mr-auto text-xs text-muted">{unsaved ? '有未保存更改' : ''}</span>
           <Button variant="tertiary" isDisabled={!!busy} onPress={close}>关闭</Button>
           <Button isDisabled={!!busy || !unsaved} onPress={save}>保存更改</Button>
         </Modal.Footer>

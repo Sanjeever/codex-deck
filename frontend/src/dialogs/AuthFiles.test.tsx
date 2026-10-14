@@ -12,17 +12,22 @@ async function press(name: string, role: 'button' | 'menuitem' = 'button') {
 
 async function chooseImport() {await press('添加账号方式'); await press('从 auth.json 导入', 'menuitem')}
 
-it.each([false, true])('导入新账号显示成功，取消文件选择不显示成功，取消=%s', async canceled => {
-  const state = createState();
+it.each([false, true])('导入新账号直接更新列表，取消文件选择保留原列表，取消=%s', async canceled => {
+  let state = createState();
   const preview = {id: 'import-preview', email: 'import@example.test', account_id: 'workspace', alias: '', existing: false};
-  const ImportAuth = vi.fn(async () => canceled ? null : preview);
+  const ImportAuth = vi.fn(async () => {
+    if (canceled) return null;
+    state = {...state, accounts: [createAccount({email: preview.email})]};
+    return preview;
+  });
   const ConfirmAuthImport = vi.fn();
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), ImportAuth, ConfirmAuthImport}}});
   render(<App />); await act(async () => {});
   await chooseImport();
   expect(ImportAuth).toHaveBeenCalledTimes(1);
   expect(ConfirmAuthImport).not.toHaveBeenCalled();
-  expect(!!screen.queryByText('账号已导入')).toBe(!canceled);
+  expect(!!screen.queryByText(preview.email)).toBe(!canceled);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
@@ -44,7 +49,7 @@ it('重复账号需要确认，失败保留确认界面，隐私模式隐藏身�
   await press('确认更新');
   expect(ConfirmAuthImport).toHaveBeenLastCalledWith(preview.id);
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByText('账号凭据已更新')).toBeTruthy();
+  expect(screen.queryByText('账号凭据已更新')).toBeNull();
 });
 
 it('关闭重复账号确认时清理待导入凭据', async () => {
@@ -73,5 +78,5 @@ it('导出先提示凭据风险，保存取消与失败保留对话框，成功�
   expect(screen.getByRole('dialog')).toBeTruthy(); expect(screen.getByText('目录不可写')).toBeTruthy();
   await press('选择保存位置');
   expect(ExportAuth).toHaveBeenLastCalledWith(account.id);
-  expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.getByText('账号已导出')).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.queryByText('账号已导出')).toBeNull();
 });

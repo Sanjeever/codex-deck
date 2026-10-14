@@ -24,8 +24,8 @@ export function DialogFrame({title, busy, onClose, children, actions, closeLabel
   </Modal.Dialog>;
 }
 
-export function Field({label, value, onChange, type = 'text', disabled = false}: {label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'password' | 'url'; disabled?: boolean}) {
+export function Field({label, value, onChange, type = 'text', disabled = false, placeholder}: {label: string; value: string; onChange: (value: string) => void; type?: 'text' | 'password' | 'url'; disabled?: boolean; placeholder?: string}) {
   return <TextField value={value} onChange={onChange} isDisabled={disabled} className="w-full">
-    <Label>{label}</Label><Input type={type} autoComplete="off" spellCheck={false} />
+    <Label>{label}</Label><Input type={type} placeholder={placeholder} autoComplete="off" spellCheck={false} />
   </TextField>;
 }

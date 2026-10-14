@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {Button, Dropdown, Input, Spinner, TextField} from '@heroui/react';
 import {backend, type SessionMatchPage} from '../bridge/api';
-import {groupBy, Highlight, localDate, localTime, projectLabel, ReadIssues} from './SessionText';
+import {groupBy, localDate, localTime, projectLabel, ReadIssues} from './SessionText';
 import {TimelineEvents} from './TimelineEvents';
 import {errorText, nextSessionRequest, type SessionBrowserController} from './useSessionBrowser';
 
@@ -86,11 +86,9 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
           else if (event.key === 'Enter' && !finding && findQuery.trim()) {event.preventDefault(); jumpMatch(event.shiftKey ? -1 : 1, false)}
         }} />{findQuery && <Button isIconOnly size="sm" variant="ghost" aria-label="清除会话查找" onPress={() => setFindQuery('')}>×</Button>}</div></TextField>
         {findQuery.trim() && <div className="session-find-matches"><span role="status">{finding ? '查找中…' : matches?.matches.length ? `${matchIndex + 1} / ${matches.matches.length}${matches.next_cursor ? '+' : ''}` : '无匹配事件'}</span><Button isIconOnly size="sm" variant="ghost" aria-label="上一个匹配事件" isDisabled={finding || !matches?.matches.length} onPress={() => jumpMatch(-1)}>↑</Button><Button isIconOnly size="sm" variant="ghost" aria-label="下一个匹配事件" isDisabled={finding || (!matches?.matches.length && !matches?.next_cursor)} onPress={() => jumpMatch(1)}>↓</Button></div>}
-        <kbd className="session-find-keys">Enter 下一个 · Shift Enter 上一个 · Esc 关闭</kbd>
       </div>}
       <div className="session-timeline">
         {findError && <div role="alert" className="session-error">{safeText(findError)}<Button size="sm" variant="ghost" onPress={() => void find()}>重试查找</Button></div>}
-        {matchIndex >= 0 && matches?.matches[matchIndex] && <p className="session-match-snippet"><Highlight text={safeText(matches.matches[matchIndex].snippet)} query={safeText(findQuery)} /></p>}
         {b.detailError && <div role="alert" className="session-error">{safeText(b.detailError)}<Button size="sm" variant="secondary" onPress={() => void b.loadDetail()}>重试详情</Button></div>}
         {b.detailLoading && <p role="status" className="session-loading"><Spinner size="sm" />正在读取记录…</p>}
         {!b.detailLoading && page && !page.events.length && <div className="session-no-results"><h3>{b.filter === 'error' ? '没有记录到异常' : b.filter === 'chat' ? '没有可展示的对话' : '没有可展示的记录'}</h3></div>}

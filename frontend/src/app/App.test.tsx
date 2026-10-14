@@ -7,6 +7,45 @@ import {toast} from '@heroui/react';
 
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.useRealTimers()});
 
+it('首次使用仅显示一个添加入口，登录完成直接更新账号列表', async () => {
+  let state = createState();
+  const account = {id: 'new', account_id: 'workspace', email: 'new@example.test', alias: '', plan: '', current: false, auth_error: '', usage: null, credits: null, usage_error: '', credits_error: '', pending_reset: null};
+  const beginLogin = vi.fn(async () => ({id: 'login'}));
+  vi.stubGlobal('go', {main: {App: {
+    SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), BeginLogin: beginLogin,
+    WaitLogin: vi.fn(async () => {state = {...state, accounts: [account]}}), RefreshAll: vi.fn(async () => state),
+  }}});
+  try {
+    render(<App />); await act(async () => {});
+    expect(screen.getAllByRole('button', {name: '添加账号'})).toHaveLength(1);
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '添加账号'}))});
+    expect(beginLogin).toHaveBeenCalledExactlyOnceWith('');
+    expect(screen.getByText(account.email)).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
+it('发现新版本不自动弹窗，设置入口可查看更新并主动打开安装确认', async () => {
+  const state = createState({build_info: {version: '1.0.0', commit: '', development: false}});
+  state.update = {...state.update, version: '2.0.0', notes: '更新说明'};
+  const install = vi.fn();
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), InstallUpdate: install}}});
+  try {
+    render(<App />); await act(async () => {});
+    act(() => {document.dispatchEvent(new Event('visibilitychange'))});
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('有可用更新')).toBeTruthy();
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '设置'}))});
+    expect(screen.getByRole('tab', {name: '关于'}).getAttribute('aria-selected')).toBe('true');
+    await act(async () => {fireEvent.click(screen.getByRole('button', {name: '新版本 v2.0.0'}))});
+    expect(screen.getByRole('heading', {name: '更新程序'})).toBeTruthy();
+    expect(screen.getByRole('button', {name: '下载并安装'})).toBeTruthy();
+    expect(install).not.toHaveBeenCalled();
+    expect((screen.getByText('更新内容').closest('details') as HTMLDetailsElement).open).toBe(false);
+  } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
+});
+
 it('工作区切换保留账号搜索与设置草稿，会话刷新不暂停或调用账号接口', async () => {
   vi.useFakeTimers();
   const state = createState({accounts: [{id: 'isolated', account_id: 'workspace', email: 'test@example.test', alias: '', plan: '', current: false, auth_error: '', usage: null, credits: null, usage_error: '', credits_error: '', pending_reset: null}]});
@@ -79,7 +118,7 @@ it('隐私模式在账号行、提示和菜单标签中隐藏邮箱与工作区'
   } finally {cleanup(); toast.clear(); vi.unstubAllGlobals()}
 });
 
-it('设置保存和失败使用 Toast，错误同时保留在页内，输入仍保留', async () => {
+it('设置保存直接更新按钮状态，失败仅在页内显示并保留输入', async () => {
   vi.useFakeTimers();
   let state = createState();
   const save = vi.fn(async (config: Configuration) => {
@@ -95,7 +134,8 @@ it('设置保存和失败使用 Toast，错误同时保留在页内，输入仍�
     const address = screen.getByRole('textbox', {name: 'WebDAV 目录地址'}) as HTMLInputElement;
     fireEvent.change(address, {target: {value: 'https://example.test/backup/'}});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'})); await Promise.resolve()});
-    expect(screen.getByRole('alertdialog', {name: '设置已保存'})).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect((screen.getByRole('button', {name: '保存更改'}) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(address.value).toBe('https://example.test/backup/');
     await act(async () => {await vi.advanceTimersByTimeAsync(5000)});
@@ -104,7 +144,7 @@ it('设置保存和失败使用 Toast，错误同时保留在页内，输入仍�
     save.mockRejectedValueOnce(new Error('设置写入失败'));
     fireEvent.change(address, {target: {value: 'https://example.test/changed/'}});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'})); await Promise.resolve()});
-    expect(screen.getByRole('alertdialog', {name: '操作失败'})).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('设置写入失败');
     await act(async () => {await vi.advanceTimersByTimeAsync(8000)});
     expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('设置写入失败');
@@ -176,7 +216,7 @@ it('自启动从系统读取，编辑先保留草稿，保存失败保留待保�
     expect(toggle.disabled).toBe(true);
     await act(async () => {systemEnabled = true; finish(true); await Promise.resolve()});
     expect(toggle.checked).toBe(true);
-    expect(screen.getByText('设置已保存')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     set.mockRejectedValueOnce(new Error('系统拒绝修改启动项'));
     await act(async () => {fireEvent.click(toggle); await Promise.resolve()});
     await act(async () => {fireEvent.click(screen.getByRole('button', {name: '保存更改'}))});

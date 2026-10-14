@@ -17,15 +17,14 @@ export function AccountDialogs({dialog, ...props}: DialogProps & {dialog: Extrac
       return <AliasDialog {...props} account={dialog.account} />;
     case 'import':
       return <DialogFrame title="更新账号凭据" busy={busy} onClose={onClose} actions={
-        <Button isDisabled={!!busy} onPress={() => void run('正在导入账号', () => backend().ConfirmAuthImport(dialog.preview.id), () => {setDialog(null); notify('success', '账号凭据已更新')})}>确认更新</Button>
+        <Button isDisabled={!!busy} onPress={() => void run('正在导入账号', () => backend().ConfirmAuthImport(dialog.preview.id), () => setDialog(null))}>确认更新</Button>
       }>
         <p>更新 {accountName(dialog.preview, state.preferences.privacy)} 的登录凭据？</p>
         <p className="text-xs text-muted break-all">工作区 {workspaceName(dialog.preview.account_id, state.preferences.privacy)}</p>
-        <p className="text-xs text-muted">保留别名和用量缓存。CLI 当前账号保持不变。</p>
       </DialogFrame>;
     case 'export':
       return <DialogFrame title="导出 auth.json" busy={busy} onClose={onClose} actions={
-        <Button isDisabled={!!busy} onPress={() => void run('正在导出账号', () => backend().ExportAuth(dialog.account.id), exported => {if (exported) {setDialog(null); notify('success', '账号已导出')}})}>选择保存位置</Button>
+        <Button isDisabled={!!busy} onPress={() => void run('正在导出账号', () => backend().ExportAuth(dialog.account.id), exported => {if (exported) setDialog(null)})}>选择保存位置</Button>
       }>
         <p>导出 {accountName(dialog.account, state.preferences.privacy)} 的登录凭据？</p>
         <p className="text-xs text-muted break-all">工作区 {workspaceName(dialog.account.account_id, state.preferences.privacy)}</p>
@@ -34,7 +33,7 @@ export function AccountDialogs({dialog, ...props}: DialogProps & {dialog: Extrac
     case 'delete': {
       const account = state.accounts.find(a => a.id === dialog.account.id) ?? dialog.account;
       return <DialogFrame title="删除账号" busy={busy} onClose={onClose} actions={
-        <Button variant="danger" isDisabled={!!busy || account.current} onPress={() => void run('正在删除', () => backend().Delete(dialog.account.id), () => {setDialog(null); notify('success', '账号已删除')})}>删除</Button>
+        <Button variant="danger" isDisabled={!!busy || account.current} onPress={() => void run('正在删除', () => backend().Delete(dialog.account.id), () => setDialog(null))}>删除</Button>
       }>
         <p>{account.current ? '当前账号不能删除' : `删除 ${accountName(dialog.account, state.preferences.privacy)}？`}</p>
       </DialogFrame>;
@@ -51,7 +50,7 @@ export function AccountDialogs({dialog, ...props}: DialogProps & {dialog: Extrac
 function AliasDialog({account, busy, run, onClose, setDialog}: DialogProps & {account: Account}) {
   const [alias, setAlias] = useState(account.alias);
   return <DialogFrame title="编辑别名" busy={busy} onClose={onClose} actions={
-    <Button isDisabled={!!busy} onPress={() => void run('正在保存', () => backend().Rename(account.id, alias), () => {setDialog(null); notify('success', '别名已保存')})}>保存</Button>
+    <Button isDisabled={!!busy} onPress={() => void run('正在保存', () => backend().Rename(account.id, alias), () => setDialog(null))}>保存</Button>
   }>
     <Field label="别名" value={alias} onChange={setAlias} disabled={!!busy} />
   </DialogFrame>;

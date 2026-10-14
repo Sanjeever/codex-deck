@@ -48,7 +48,7 @@ it('等待浏览器登录时可取消，不把主动取消显示成登录失败'
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => createState()), BeginLogin: vi.fn(async () => ({id: 'login-session'})), WaitLogin, CancelLogin, RefreshAll}}});
   render(<App />);
   await act(async () => {});
-  await act(async () => {fireEvent.click(within(document.querySelector('header')!).getByRole('button', {name: '添加账号'}))});
+  await press('添加账号');
   expect(screen.getByText('等待浏览器授权')).toBeTruthy();
   await press('取消');
   expect(CancelLogin).toHaveBeenCalledWith('login-session');

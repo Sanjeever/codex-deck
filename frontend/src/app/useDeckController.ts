@@ -6,7 +6,7 @@ import type {Dialog} from '../dialogs/DialogHost';
 import type {SettingsTab} from '../dialogs/useSettingsDraft';
 import {useAutoRefresh} from './useAutoRefresh';
 
-export type RunOperation = <T>(label: string, action: () => Promise<T>, done?: (result: T) => void) => Promise<void>;
+export type RunOperation = <T>(label: string, action: () => Promise<T>, done?: (result: T) => void, failed?: (message: string) => void) => Promise<void>;
 
 function errorText(error: unknown) {return error instanceof Error ? error.message : String(error)}
 
@@ -17,10 +17,9 @@ export function useDeckController() {
   const busyRef = useRef(false);
   const [loadError, setLoadError] = useState('');
   const canceledLogin = useRef('');
-  const remindedVersion = useRef('');
   const automatic = useAutoRefresh(state !== null, !!busy || dialog !== null);
 
-  const run: RunOperation = useCallback(async <T,>(label: string, action: () => Promise<T>, done?: (result: T) => void) => {
+  const run: RunOperation = useCallback(async <T,>(label: string, action: () => Promise<T>, done?: (result: T) => void, failed?: (message: string) => void) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(label); setLoadError('');
     try {
@@ -32,7 +31,8 @@ export function useDeckController() {
       let text = errorText(error);
       try {setState(await backend().GetState())} catch (stateError) {if (errorText(stateError) !== text) text += `；${errorText(stateError)}`}
       setLoadError(text);
-      notify('error', '操作失败', text);
+      if (failed) failed(text);
+      else notify('error', '操作失败', text);
     }
     finally {busyRef.current = false; setBusy('')}
   }, [automatic.pause]);
@@ -45,17 +45,6 @@ export function useDeckController() {
   }, [load]);
 
   useEffect(() => window.runtime?.EventsOnMultiple('deck:state', setState, -1), []);
-
-  useEffect(() => {
-    const showUpdate = () => {
-      if (state?.update.version && !state.build_info.development && !state.preferences.disable_update_check && !busy && !dialog && document.visibilityState === 'visible' && remindedVersion.current !== state.update.version) {
-        remindedVersion.current = state.update.version;
-        setDialog({kind: 'update'});
-      }
-    };
-    showUpdate(); document.addEventListener('visibilitychange', showUpdate);
-    return () => document.removeEventListener('visibilitychange', showUpdate);
-  }, [state, busy, dialog]);
 
   const close = async () => {
     if (dialog?.kind === 'update' && state?.update.phase) return;
@@ -82,7 +71,7 @@ export function useDeckController() {
       const session = await backend().BeginLogin(target); loginID = session.id;
       setDialog({kind: 'login', id: session.id}); setBusy('等待浏览器登录');
       await backend().WaitLogin(session.id);
-      setDialog(null); setState(await backend().RefreshAll()); notify('success', '账号已保存');
+      setDialog(null); setState(await backend().RefreshAll());
     } catch (error) {
       setDialog(null);
       if (canceledLogin.current !== loginID || !loginID) notify('error', '登录失败', errorText(error));
@@ -112,7 +101,6 @@ export function useDeckController() {
   const importAuth = () => void run('正在导入账号', () => backend().ImportAuth(), preview => {
     if (!preview) return;
     if (preview.existing) setDialog({kind: 'import', preview});
-    else notify('success', '账号已导入');
   });
 
   const openSettings = (tab: SettingsTab = 'general') => {if (state) setDialog({kind: 'settings', tab})};

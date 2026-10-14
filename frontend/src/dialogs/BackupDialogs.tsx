@@ -1,21 +1,19 @@
 import {Button} from '@heroui/react';
 import {backend} from '../bridge/api';
 import {accountName, dateTime, workspaceName} from '../accounts/accounts';
-import {notify} from '../notifications/Notifications';
 import {DialogFrame} from './DialogFrame';
 import type {Dialog, DialogProps} from './DialogHost';
 
 export function BackupDialogs({dialog, state, busy, run, onClose, setDialog}: DialogProps & {dialog: Extract<Dialog, {kind: 'overwrite' | 'restore'}>}) {
-  const success = (text: string) => {setDialog(null); notify('success', text)};
   if (dialog.kind === 'overwrite') return <DialogFrame title="覆盖远端备份" busy={busy} onClose={onClose} actions={
-    <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在覆盖备份', () => backend().OverwriteBackup(), () => success('备份已覆盖'))}>确认覆盖</Button>
+    <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在覆盖备份', () => backend().OverwriteBackup(), () => setDialog(null))}>确认覆盖</Button>
   }>
     <p>用本地账号、认证和设置覆盖当前远端备份？其他设备的修改会被替换。</p>
   </DialogFrame>;
   const {preview} = dialog;
   const privacy = state.preferences.privacy;
   return <DialogFrame title="恢复备份" busy={busy} onClose={onClose} actions={
-    <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在恢复', () => backend().Restore(preview.id), () => success('备份已恢复'))}>确认替换</Button>
+    <Button variant="danger" isDisabled={!!busy} onPress={() => void run('正在恢复', () => backend().Restore(preview.id), () => setDialog(null))}>确认替换</Button>
   }>
     <div className="space-y-3">
       <p>整体替换本地账号、认证和设置？</p>

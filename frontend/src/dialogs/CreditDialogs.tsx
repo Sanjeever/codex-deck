@@ -21,7 +21,7 @@ export function CreditDialogs({dialog, state, busy, run, onClose, setDialog, use
   }>
     <div className="space-y-2">
       <p>为 {accountName(dialog.account, privacy)} 消费一张重置卡？</p>
-      <p className="text-xs text-muted break-all">{privacy ? '••••@••••' : dialog.account.email} · 工作区 {workspaceName(dialog.account.account_id, privacy)}</p>
+      <p className="text-xs text-muted break-all">{dialog.account.alias && `${privacy ? '••••@••••' : dialog.account.email} · `}工作区 {workspaceName(dialog.account.account_id, privacy)}</p>
     </div>
   </DialogFrame>;
 
@@ -34,14 +34,14 @@ export function CreditDialogs({dialog, state, busy, run, onClose, setDialog, use
   </>}>
     <div className="space-y-4">
       <p className="text-sm">{accountName(account, privacy)} <span className="ml-2 text-muted">{count != null ? `${count} 张可用` : '数量未知'}</span></p>
-      {account.credits_error && <p className="text-sm text-danger" title={privateText(account.credits_error, privacy, state.accounts)}>查询失败</p>}
+      {account.credits_error && <p role="alert" className="text-sm text-danger break-words">{privateText(account.credits_error, privacy, state.accounts)}</p>}
       {account.credits?.credits?.length ? <ul className="space-y-3">{account.credits.credits.map(credit => <li key={credit.id} className="credit-item">
         <div>
           <p className="text-sm">{credit.title || credit.id}</p>
           <p className="mt-1 text-xs text-muted">{({available: '可用', redeemed: '已兑换', expired: '已过期', redeeming: '兑换中'} as Record<string, string>)[credit.status] || credit.status} · {credit.expires_at ? `${dateTime(credit.expires_at)} 到期` : '未提供到期时间'}</p>
         </div>
         {credit.status === 'available' && credit.reset_type === 'codex_rate_limits' && <Button size="sm" variant="secondary" isDisabled={!!busy} onPress={() => useCredit(account, credit.id)}>使用</Button>}
-      </li>)}</ul> : <p className="text-sm text-muted">{busy ? '正在查询' : '暂无详情'}</p>}
+      </li>)}</ul> : !busy && <p className="text-sm text-muted">暂无详情</p>}
       {account.credits && <p className="text-xs text-muted">{account.credits_error ? '缓存' : '查询时间'} · {dateTime(account.credits.queried_at)}</p>}
     </div>
   </DialogFrame>;

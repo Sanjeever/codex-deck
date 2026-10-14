@@ -16,10 +16,7 @@ export function useCLIProxyDraft(active: boolean, busy: string, run: RunOperatio
   const [applied, setApplied] = useState(false);
   const dirty = draft.url !== saved.url || draft.remove !== saved.remove;
   const accept = (value: CLIProxyState) => {setState(value); const next = initialDraft(value); setDraft(next); setSaved(next); setError('')};
-  const read = () => void run('正在读取 CLI 代理', async () => {
-    try {return await backend().GetCLIProxy()}
-    catch (error) {setError(error instanceof Error ? error.message : String(error)); throw error}
-  }, accept);
+  const read = () => void run('正在读取 CLI 代理', () => backend().GetCLIProxy(), accept, setError);
   useEffect(() => {if (active && !busy && state === null && !error) read()}, [active, busy, state, error, run]);
   const save = async () => {
     if (!state) throw new Error('请先读取 CLI 代理配置');

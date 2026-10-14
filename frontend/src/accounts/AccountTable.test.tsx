@@ -21,11 +21,4 @@ it('筛选账号、清除无结果筛选，并将窗口排序交给偏好保存'
   await act(async () => {fireEvent.click(screen.getByRole('button', {name: '账号排序'}))});
   fireEvent.click(within(screen.getByRole('menu')).getByText('Weekly 剩余额度'));
   expect(onSort).toHaveBeenCalledExactlyOnceWith('weekly');
-  const density = screen.getByRole('button', {name: '紧凑行距'});
-  expect(density.getAttribute('aria-pressed')).toBe('false');
-  fireEvent.click(density);
-  expect(density.getAttribute('aria-pressed')).toBe('true');
-  expect(screen.getByRole('table').closest('.table-compact')).toBeTruthy();
-  fireEvent.click(density);
-  expect(screen.getByRole('table').closest('.table-compact')).toBeNull();
 });

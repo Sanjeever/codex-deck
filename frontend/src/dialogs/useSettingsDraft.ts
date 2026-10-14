@@ -1,6 +1,5 @@
 import {useEffect, useState} from 'react';
 import {backend, type Configuration, type State} from '../bridge/api';
-import {notify} from '../notifications/Notifications';
 import type {RunOperation} from '../app/useDeckController';
 import {useCLIProxyDraft} from './useCLIProxyDraft';
 
@@ -28,10 +27,7 @@ export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'pr
     backup: !same(draft.settings, saved.settings),
     about: draft.preferences.disable_update_check !== saved.preferences.disable_update_check,
   };
-  const readAutoStart = () => void run('正在读取自启动设置', async () => {
-    try {return await backend().GetAutoStart()}
-    catch (error) {setError({section: 'general', text: errorText(error)}); throw error}
-  }, enabled => {setAutoStart(enabled); setSavedAutoStart(enabled); setError(null)});
+  const readAutoStart = () => void run('正在读取自启动设置', () => backend().GetAutoStart(), enabled => {setAutoStart(enabled); setSavedAutoStart(enabled); setError(null)}, text => setError({section: 'general', text}));
   useEffect(readAutoStart, [run]);
 
   const save = () => void run('正在保存设置', async () => {
@@ -68,7 +64,7 @@ export function useSettingsDraft(state: Pick<State, 'network' | 'settings' | 'pr
         throw new Error(text);
       }
     }
-  }, () => notify('success', '设置已保存'));
+  }, undefined, text => setError(current => ({section: current?.section ?? '', text})));
 
   return {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, cliProxy, unsaved: localDirty || autoStartDirty || cliProxy.dirty, save};
 }

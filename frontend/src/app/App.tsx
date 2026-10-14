@@ -30,15 +30,15 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="deck-header">
-      <div className="deck-heading"><div className="flex items-baseline gap-2"><h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1>{state && <span className="text-xs text-muted">v{state.build_info.version}</span>}</div><nav aria-label="工作区" className="deck-workspaces"><Button size="sm" variant={workspace === 'accounts' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'accounts'} onPress={() => setWorkspace('accounts')}>账号</Button><Button size="sm" variant={workspace === 'sessions' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'sessions'} onPress={() => setWorkspace('sessions')}>会话</Button></nav></div>
+      <div className="deck-heading"><h1 className="text-xl font-semibold tracking-tight">Codex Deck</h1><nav aria-label="工作区" className="deck-workspaces"><Button size="sm" variant={workspace === 'accounts' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'accounts'} onPress={() => setWorkspace('accounts')}>账号</Button><Button size="sm" variant={workspace === 'sessions' ? 'secondary' : 'ghost'} aria-pressed={workspace === 'sessions'} onPress={() => setWorkspace('sessions')}>会话</Button></nav></div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" aria-pressed={privacy} isDisabled={!!busy || !state} onPress={() => state && savePreferences({...state.preferences, privacy: !privacy})}>隐私</Button>
         <Button variant="secondary" size="sm" aria-keyshortcuts="Control+r Meta+r" aria-label={workspace === 'sessions' ? '刷新会话' : state?.auto_refreshing ? '正在自动刷新' : '刷新'} isDisabled={workspace === 'sessions' ? sessions.listLoading : !!busy || !state} onPress={workspace === 'sessions' ? sessions.refresh : refresh}>{workspace === 'accounts' && state?.auto_refreshing && <Spinner size="sm" />}<span title="刷新（Ctrl / ⌘ + R）">刷新</span></Button>
-        <Button variant="secondary" size="sm" aria-keyshortcuts="Control+, Meta+," isDisabled={!!busy || !state} onPress={() => openSettings()}><span title="设置（Ctrl / ⌘ + ,）">设置</span></Button>
+        <Button variant="secondary" size="sm" aria-label="设置" aria-keyshortcuts="Control+, Meta+," isDisabled={!!busy || !state} onPress={() => openSettings(state?.update.version ? 'about' : 'general')}><span title="设置（Ctrl / ⌘ + ,）">设置</span>{state?.update.version && <span aria-label="有可用更新" title="有可用更新" className="size-1.5 rounded-full bg-accent" />}</Button>
         {workspace === 'accounts' && <div className="flex items-center gap-1">
-          <Button size="sm" aria-keyshortcuts="Control+n Meta+n" isDisabled={!!busy || !state} onPress={() => void login()}><span title="添加账号（Ctrl / ⌘ + N）">添加账号</span></Button>
+          {!!state?.accounts.length && <Button size="sm" aria-keyshortcuts="Control+n Meta+n" isDisabled={!!busy} onPress={() => void login()}><span title="添加账号（Ctrl / ⌘ + N）">添加账号</span></Button>}
           <Dropdown>
-            <Dropdown.Trigger aria-label="添加账号方式" isDisabled={!!busy || !state} className="row-menu">▾</Dropdown.Trigger>
+            <Dropdown.Trigger aria-label="添加账号方式" isDisabled={!!busy || !state} className="row-menu">{!state?.accounts.length && '导入 '}▾</Dropdown.Trigger>
             <Dropdown.Popover><Dropdown.Menu aria-label="添加账号方式" onAction={key => {if (key === 'import') importAuth(); else void login()}}>
               <Dropdown.Item id="login">浏览器登录</Dropdown.Item>
               <Dropdown.Item id="import">从 auth.json 导入</Dropdown.Item>
@@ -47,12 +47,12 @@ export default function App() {
         </div>}
       </div>
     </header>
-    <Notifications state={state} automaticError={automaticError} />
-    {state && (automaticError || state.desktop_error || state.cli_error || state.backup.error) && <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-danger">
+    <Notifications state={state} />
+    {state && !dialog && (automaticError || state.desktop_error || state.cli_error || state.backup.error) && <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-danger">
       {automaticError && <ErrorDetails label="自动刷新异常" message={safeText(automaticError)} busy={busy} onAction={refresh} />}
       {state.desktop_error && <ErrorDetails label="桌面功能异常" message={safeText(state.desktop_error)} busy={busy} />}
       {state.cli_error && <ErrorDetails label="CLI 同步失败" message={safeText(state.cli_error)} busy={busy} onAction={refresh} />}
-      {state.backup.error && <div className="flex flex-wrap items-start gap-2"><ErrorDetails label={state.backup.conflict ? '备份冲突' : '备份失败'} message={safeText(state.backup.error)} busy={busy} /><Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => openSettings('backup')}>{state.backup.conflict ? '备份冲突 · 处理' : '备份失败 · 查看'}</Button></div>}
+      {state.backup.error && <Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => openSettings('backup')}>{state.backup.conflict ? '备份冲突 · 处理' : '备份失败 · 查看'}</Button>}
     </div>}
     {workspace === 'accounts' && !state && !busy && (loadError || automaticError) && <div className="empty-state flex-col gap-4"><p role="alert" className="max-w-lg text-sm text-danger break-all">{safeText(loadError || automaticError)}</p><Button variant="secondary" onPress={() => void load()}>重试加载</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}

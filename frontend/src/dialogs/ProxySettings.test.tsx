@@ -58,7 +58,7 @@ it('统一保存所有标签页，测试不保存，后台推送保留草稿，�
   expect(state().preferences.low_quota_notify).toBe(true);
   expect(state().preferences.disable_update_check).toBe(true);
   expect((screen.getByRole('button', {name: '保存更改'}) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText('设置已保存')).toBeTruthy();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
   await press('关闭'); await press('设置'); await press('网络', 'tab');
   expect((screen.getByRole('radio', {name: '自定义代理'}) as HTMLInputElement).checked).toBe(true);
   expect(field('代理地址').value).toBe('http://127.0.0.1:7897');
@@ -79,7 +79,8 @@ it('连接和保存失败保留草稿，允许保存未通过连接测试的配�
   expect(api.SaveConfiguration).toHaveBeenCalledTimes(1);
   expect(field('代理地址').value).toBe('http://127.0.0.1:7897');
   expect(field('代理密码').value).toBe('secret-draft');
-  expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe('保存配置失败');
+  expect(within(screen.getByRole('dialog')).getAllByRole('alert').map(item => item.textContent)).toEqual(['保存配置失败', '连接测试失败']);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(screen.queryByText('设置已保存')).toBeNull();
 });
 

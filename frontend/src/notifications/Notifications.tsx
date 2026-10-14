@@ -1,4 +1,4 @@
-import {useEffect, useRef} from 'react';
+import {useEffect} from 'react';
 import {Toast, toast} from '@heroui/react';
 import type {State} from '../bridge/api';
 import {privateText} from '../accounts/accounts';
@@ -15,8 +15,7 @@ export function notify(kind: NoticeKind, title: string, description?: string) {
   else toast.success(title, options);
 }
 
-export function Notifications({state, automaticError}: {state: State | null; automaticError: string}) {
-  const previous = useRef(new Map<string, string>());
+export function Notifications({state}: {state: State | null}) {
   const privacy = state?.preferences.privacy ?? false;
   const safeText = (text: string) => privateText(text, privacy, state?.accounts ?? []);
 
@@ -28,27 +27,6 @@ export function Notifications({state, automaticError}: {state: State | null; aut
     document.addEventListener('visibilitychange', clearHidden);
     return () => {document.removeEventListener('visibilitychange', clearHidden); toast.clear()};
   }, []);
-  useEffect(() => {
-    const errors: [string, string, string][] = [
-      ['automatic', '自动刷新失败', automaticError],
-      ['desktop', '桌面功能异常', state?.desktop_error ?? ''],
-      ['cli', 'CLI 账号同步失败', state?.cli_error ?? ''],
-      ['backup', state?.backup.conflict ? '备份冲突' : '备份失败', state?.backup.error ?? ''],
-    ];
-    for (const account of state?.accounts ?? []) {
-      const name = account.alias || account.email || account.account_id;
-      errors.push(
-        [`${account.id}:auth`, `${name} · 需重新登录`, account.auth_error],
-        [`${account.id}:usage`, `${name} · 用量查询失败`, account.usage_error],
-        [`${account.id}:credits`, `${name} · 重置卡查询失败`, account.credits_error],
-      );
-    }
-    for (const [key, title, message] of errors) {
-      if (message && previous.current.get(key) !== message) notify('error', title, message);
-    }
-    previous.current = new Map(errors.map(([key, , message]) => [key, message]));
-  }, [state, automaticError]);
-
   return <Toast.Provider placement="bottom end" maxVisibleToasts={3} width={360} aria-label="操作消息">
     {({toast: item}) => <Toast toast={item} variant={item.content.variant}>
       <Toast.Indicator variant={item.content.variant} />

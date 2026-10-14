@@ -21,7 +21,6 @@ interface AccountTableProps {
 export function AccountTable({accounts, privacy, busy, query, sort, searchRef, onQuery, onSort, onAction, onAdd}: AccountTableProps) {
   const [now, setNow] = useState(Date.now);
   const [filter, setFilter] = useState<AccountFilter>('all');
-  const [compact, setCompact] = useState(false);
   useEffect(() => {
     const update = () => setNow(Date.now());
     const timer = window.setInterval(update, 60_000);
@@ -29,12 +28,11 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
     return () => {window.clearInterval(timer); document.removeEventListener('visibilitychange', update)};
   }, []);
   const visible = visibleAccounts(accounts, query, sort, now, filter, privacy);
-  if (accounts.length === 0) return <div className="empty-state"><Button variant="secondary" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
+  if (accounts.length === 0) return <div className="empty-state"><Button aria-keyshortcuts="Control+n Meta+n" isDisabled={!!busy} onPress={onAdd}>添加账号</Button></div>;
   return <>
     <div className="account-toolbar">
       <TextField value={query} onChange={onQuery} aria-label="搜索账号" className="max-w-64"><Input ref={searchRef} placeholder="搜索账号" autoComplete="off" title="搜索账号（Ctrl / ⌘ + F）" aria-keyshortcuts="Control+f Meta+f" /></TextField>
       <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" variant="ghost" aria-label="紧凑行距" aria-pressed={compact} onPress={() => setCompact(value => !value)}>{compact ? '紧凑行距' : '标准行距'}</Button>
       <Dropdown>
         <Dropdown.Trigger className="sort-trigger" aria-label="账号筛选">{{all: '全部账号', low: '额度不足', auth: '需重新登录'}[filter]} ▾</Dropdown.Trigger>
         <Dropdown.Popover><Dropdown.Menu aria-label="账号筛选" selectionMode="single" selectedKeys={[filter]} onAction={key => setFilter(String(key) as AccountFilter)}>
@@ -56,7 +54,7 @@ export function AccountTable({accounts, privacy, busy, query, sort, searchRef, o
       </div>
     </div>
     {visible.length === 0 && <div className="py-12 text-center text-muted"><p>没有匹配账号</p><Button size="sm" variant="ghost" onPress={() => {setFilter('all'); onQuery('')}}>清除筛选</Button></div>}
-    <div className={`table-scroll ${compact ? 'table-compact' : ''}`}><table aria-label="Codex 账号">
+    <div className="table-scroll"><table aria-label="Codex 账号">
       <thead><tr><th>账号</th><th>套餐</th><th>5H 剩余</th><th>Weekly 剩余</th><th>重置卡</th><th className="text-right">操作</th></tr></thead>
       <tbody>{visible.map(account => <AccountRow key={account.id} account={account} accounts={accounts} privacy={privacy} busy={busy} now={now} onAction={onAction} />)}</tbody>
     </table></div>
@@ -105,11 +103,10 @@ function Quota({label, value, now}: {label: string; value: QuotaWindow | null | 
   if (!value) return <span className="text-muted">未知</span>;
   const percent = Math.round(value.remaining_percent * 10) / 10;
   return <div className="quota">
-    <Meter aria-label={`${label} 剩余`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
-      <Meter.Output className="tabular-nums text-sm">剩余 {percent}%</Meter.Output>
+    <Meter aria-label={`${label} 剩余${percent < LOW_QUOTA_THRESHOLD ? '，额度偏低' : ''}`} value={percent} minValue={0} maxValue={100} className="gap-2" size="sm">
+      <Meter.Output className="tabular-nums text-sm">{percent}%</Meter.Output>
       <Meter.Track className="h-1"><Meter.Fill className={percent < LOW_QUOTA_THRESHOLD ? 'quota-low' : ''} /></Meter.Track>
     </Meter>
-    {percent < LOW_QUOTA_THRESHOLD && <p className="mt-1 text-xs text-warning">额度偏低</p>}
     <p className="mt-2 text-xs text-muted" title={dateTime(value.reset_at)}>{recoveryText(value.reset_at, now)}</p>
   </div>;
 }

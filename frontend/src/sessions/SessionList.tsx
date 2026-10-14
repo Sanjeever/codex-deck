@@ -44,6 +44,6 @@ export function SessionList({browser: b, safeText, keyboardEnabled}: {browser: S
       {b.list?.next_cursor && <Button size="sm" variant="secondary" isDisabled={b.listLoading} onPress={() => void b.loadList(true)}>加载更多会话</Button>}
       <ReadIssues issues={b.list?.issues ?? []} safeText={safeText} />
     </div>
-    <footer className="session-list-footer"><span>{b.list?.sessions.length ?? 0} 条</span><kbd className="session-list-keys">↑↓ 移动 · Enter 打开</kbd>{b.list?.source && <details className="session-source-info"><summary>来源</summary><code>{safeText(b.list.source)}</code></details>}</footer>
+    <footer className="session-list-footer">{b.list?.source && <details className="session-source-info"><summary>来源</summary><code>{safeText(b.list.source)}</code></details>}</footer>
   </section>;
 }

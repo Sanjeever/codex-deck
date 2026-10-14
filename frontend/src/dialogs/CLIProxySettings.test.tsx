@@ -42,15 +42,15 @@ it('按需读取，复用 Deck 地址只填草稿，测试不保存，统一保�
   expect(api.SaveCLIProxy).not.toHaveBeenCalled();
   await press('测试 CLI 代理');
   expect(api.TestCLIProxy).toHaveBeenCalledWith('http://127.0.0.1:7897/');
-  expect(screen.getByText('通过此代理访问 GitHub 成功，未验证 Codex CLI 连接。')).toBeTruthy();
+  expect(screen.getByText('GitHub 连接成功')).toBeTruthy();
   change('http://127.0.0.1:7898');
-  expect(screen.queryByText('通过此代理访问 GitHub 成功，未验证 Codex CLI 连接。')).toBeNull();
+  expect(screen.queryByText('GitHub 连接成功')).toBeNull();
   await act(async () => {push({auto_refreshing: true})});
   expect(field().value).toBe('http://127.0.0.1:7898');
   await press('保存更改');
   expect(api.SaveCLIProxy).toHaveBeenCalledWith({url: 'http://127.0.0.1:7898', remove: false, expected: []});
   expect(api.SaveConfiguration).not.toHaveBeenCalled();
-  expect(screen.getByText('CLI 代理配置已保存，重新启动 Codex CLI 生效。')).toBeTruthy();
+  expect(screen.getByText('重启 Codex CLI 后生效')).toBeTruthy();
   await press('关闭'); await press('设置'); await press('网络', 'tab');
   expect(field().value).toBe('http://127.0.0.1:7898');
 });

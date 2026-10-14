@@ -15,14 +15,14 @@
   color-scheme: dark;
 }
 body {margin: 0; background: var(--background); color: var(--foreground); font-size: 14px;}
-.app-shell {max-width: 1380px; margin: 0 auto; padding: 36px 32px;}
-.deck-header {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 24px;}
+.app-shell {max-width: 1380px; margin: 0 auto; padding: 24px 24px;}
+.deck-header {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 20px;}
 .deck-heading {display: flex; align-items: center; flex-wrap: wrap; gap: 24px;}
 .deck-workspaces {display: flex; gap: 4px;}
 .table-scroll {overflow: auto; max-height: calc(100dvh - 220px); scrollbar-width: thin;}
 table {width: 100%; border-collapse: separate; border-spacing: 0 6px; table-layout: fixed;}
 th {position: sticky; top: 0; z-index: 1; background: var(--background); font-weight: 400; font-size: 12px; color: var(--muted); text-align: left; padding: 4px 16px 14px;}
-td {vertical-align: top; padding: 22px 16px; background: var(--surface);}
+td {vertical-align: top; padding: 14px 16px; background: var(--surface);}
 th:first-child {width: 29%;}
 th:nth-child(2) {width: 10%;}
 th:nth-child(3), th:nth-child(4) {width: 18%;}
@@ -34,7 +34,6 @@ td:last-child {border-radius: 0 6px 6px 0;}
 .meter {--meter-fill: var(--foreground);}
 .quota-low {background: var(--warning);}
 .current-tag {white-space: nowrap; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--default); color: var(--foreground);}
-.table-compact td {padding-top: 12px; padding-bottom: 12px;}
 .table-scroll td {overflow-wrap: anywhere;}
 .row-menu {height: 30px; min-width: 26px; padding: 0 4px; border-radius: 5px; font-weight: 600; cursor: pointer;}
 .row-menu:hover, .row-menu[data-hovered] {background: var(--default);}
