@@ -51,6 +51,10 @@ func backupRequest(ctx context.Context, settings Settings, method string, body [
 	if err != nil {
 		return nil, err
 	}
+	return backupFileRequest(ctx, settings, filename, method, body, headers)
+}
+
+func backupFileRequest(ctx context.Context, settings Settings, filename, method string, body []byte, headers map[string]string) (*http.Response, error) {
 	address, err := url.JoinPath(settings.WebDAVURL, filename)
 	if err != nil {
 		return nil, err
