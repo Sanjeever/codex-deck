@@ -11,7 +11,7 @@ export function createState(overrides: Partial<State> = {}): State {
     settings: {webdav_url: '', webdav_username: '', webdav_password: ''},
     cli_store: 'file',
     cli_error: '',
-    backup: {at: null, error: '', busy: false, conflict: false},
+    backup: {at: null, error: '', busy: false},
     next_refresh_at: null,
     auto_refreshing: false,
     ...overrides,

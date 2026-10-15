@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {Button, Dropdown, Label, Modal, Spinner, Switch, Tabs} from '@heroui/react';
-import {backend, type RestorePreview, type State} from '../bridge/api';
+import {backend, type BackupFile, type State} from '../bridge/api';
 import {dateTime, lowQuotaThreshold} from '../accounts/accounts';
 import {notify} from '../notifications/Notifications';
 import {Field} from './DialogFrame';
@@ -16,14 +16,13 @@ interface SettingsDialogProps {
   run: RunOperation;
   safeText: (value: string) => string;
   onClose: () => Promise<void>;
-  onOverwrite: () => void;
-  onRestore: (preview: RestorePreview) => void;
+  onBackups: (files: BackupFile[]) => void;
   onUpdate: () => void;
 }
 
 const tabs: Record<SettingsTab, string> = {general: '常规', network: '网络', backup: '备份', about: '关于'};
 
-export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite, onRestore, onUpdate, initialTab}: SettingsDialogProps) {
+export function SettingsDialog({state, busy, run, safeText, onClose, onBackups, onUpdate, initialTab}: SettingsDialogProps) {
   const {draft, setDraft, tab, setTab, autoStart, setAutoStart, readAutoStart, error, dirty, cliProxy, unsaved, save} = useSettingsDraft(state, run, initialTab, busy);
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const requestLeave = (action: () => void) => {if (unsaved) setLeave(() => action); else action()};
@@ -90,12 +89,11 @@ export function SettingsDialog({state, busy, run, safeText, onClose, onOverwrite
               </div>
               <div className="space-y-3">
                 {state.backup.busy && <p role="status" className="text-xs text-muted">正在备份</p>}
-                {state.backup.error ? <p className="text-xs text-danger break-words">{state.backup.conflict ? '备份冲突' : '备份失败'} · {safeText(state.backup.error)}</p> : <p className="text-xs text-muted">{state.backup.at ? `上次备份 · ${dateTime(state.backup.at)}` : '暂无备份记录'}</p>}
+                {state.backup.error ? <p className="text-xs text-danger break-words">备份失败 · {safeText(state.backup.error)}</p> : <p className="text-xs text-muted">{state.backup.at ? `上次备份 · ${dateTime(state.backup.at)}` : '暂无备份记录'}</p>}
                 {backupBlocked && <p className="text-xs text-muted">请先保存网络与备份设置。</p>}
                 <div className="flex flex-wrap gap-2">
-                  {state.backup.conflict && <Button variant="danger" size="sm" isDisabled={!!busy || backupBlocked} onPress={() => requestLeave(onOverwrite)}>覆盖远端</Button>}
                   <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => void run('正在备份', () => backend().Backup())}>立即备份</Button>
-                  <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => requestLeave(() => void run('正在下载备份', () => backend().PrepareRestore(), onRestore))}>恢复备份</Button>
+                  <Button variant="secondary" size="sm" isDisabled={!!busy || !state.settings.webdav_url || backupBlocked} onPress={() => requestLeave(() => void run('正在读取备份列表', () => backend().ListBackups(), onBackups))}>恢复备份</Button>
                 </div>
               </div>
             </Tabs.Panel>

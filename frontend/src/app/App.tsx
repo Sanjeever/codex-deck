@@ -52,7 +52,7 @@ export default function App() {
       {automaticError && <ErrorDetails label="自动刷新异常" message={safeText(automaticError)} busy={busy} onAction={refresh} />}
       {state.desktop_error && <ErrorDetails label="桌面功能异常" message={safeText(state.desktop_error)} busy={busy} />}
       {state.cli_error && <ErrorDetails label="CLI 同步失败" message={safeText(state.cli_error)} busy={busy} onAction={refresh} />}
-      {state.backup.error && <Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => openSettings('backup')}>{state.backup.conflict ? '备份冲突 · 处理' : '备份失败 · 查看'}</Button>}
+      {state.backup.error && <Button variant="ghost" size="sm" isDisabled={!!busy} onPress={() => openSettings('backup')}>备份失败 · 查看</Button>}
     </div>}
     {workspace === 'accounts' && !state && !busy && (loadError || automaticError) && <div className="empty-state flex-col gap-4"><p role="alert" className="max-w-lg text-sm text-danger break-all">{safeText(loadError || automaticError)}</p><Button variant="secondary" onPress={() => void load()}>重试加载</Button></div>}
     {busy && !dialog && <p role="status" className="mb-5 flex items-center gap-2 text-xs text-muted"><Spinner size="sm" />{busy}</p>}

@@ -26,11 +26,11 @@ it('错误详情与复制遵循隐私模式，重试只请求对应账号', asyn
 });
 
 it('备份处理入口直接打开备份设置', async () => {
-  const state = createState({backup: {busy: false, conflict: true, error: '远端版本已变化', at: null}});
+  const state = createState({backup: {busy: false, error: '上传失败', at: null}});
   vi.stubGlobal('go', {main: {App: {GetState: vi.fn(async () => state), SetAutomaticPaused: vi.fn(async () => {}), GetAutoStart: vi.fn(async () => false)}}});
   render(<App />);
   await act(async () => {});
-  await act(async () => {fireEvent.click(screen.getByRole('button', {name: '备份冲突 · 处理'}))});
+  await act(async () => {fireEvent.click(screen.getByRole('button', {name: '备份失败 · 查看'}))});
   expect(screen.getByRole('tab', {name: '备份'}).getAttribute('aria-selected')).toBe('true');
   expect(screen.getByRole('textbox', {name: 'WebDAV 目录地址'})).toBeTruthy();
 });

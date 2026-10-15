@@ -13,8 +13,9 @@ export interface Usage {plan: string; five_hour: QuotaWindow | null; weekly: Quo
 export interface Credit {id: string; reset_type: string; status: string; granted_at: string; expires_at: string | null; title: string | null; description: string | null}
 export interface Credits {available_count: number; credits: Credit[] | null; queried_at: string}
 export interface Account {id: string; account_id: string; email: string; alias: string; plan: string; current: boolean; auth_error: string; usage: Usage | null; credits: Credits | null; usage_error: string; credits_error: string; pending_reset: ResetRequest | null}
-export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean; conflict: boolean}; next_refresh_at: string | null; auto_refreshing: boolean; tray_busy?: string}
-export interface RestorePreview {id: string; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]; removes_current: boolean}
+export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean}; next_refresh_at: string | null; auto_refreshing: boolean; tray_busy?: string}
+export interface BackupFile {id: string; name: string; hostname: string; created_at: string | null; modified_at: string | null; size: number; legacy: boolean}
+export interface RestorePreview {id: string; file: BackupFile; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]; removes_current: boolean}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
 export interface AuthImportPreview extends PreviewAccount {id: string; existing: boolean; unchanged: boolean}
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
@@ -55,8 +56,8 @@ interface Backend {
   SaveSettings(settings: Settings): Promise<void>;
   SavePreferences(preferences: Preferences): Promise<void>;
   Backup(): Promise<void>;
-  OverwriteBackup(): Promise<void>;
-  PrepareRestore(): Promise<RestorePreview>;
+  ListBackups(): Promise<BackupFile[]>;
+  PrepareRestore(filename: string): Promise<RestorePreview>;
   CancelRestore(): Promise<void>;
   Restore(id: string): Promise<void>;
   PrepareConsume(id: string, creditID: string): Promise<ResetRequest>;

@@ -62,13 +62,15 @@ it.each([false, true])('恢复预览隐藏身份并按需提示重新导入，�
   state.preferences.privacy = true;
   const CancelRestore = vi.fn(async () => {});
   const Restore = vi.fn();
-  const preview = {id: 'preview', accounts: 1, webdav_url: state.settings.webdav_url, modified_at: null, added: [createAccount()], removed: [], removes_current: removesCurrent};
-  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), PrepareRestore: vi.fn(async () => preview), CancelRestore, Restore}}});
+  const file = {id: 'codex-deck/backup.json', name: 'backup.json', hostname: 'MacBook', created_at: null, modified_at: null, size: 1024, legacy: false};
+  const preview = {id: 'preview', file, accounts: 1, webdav_url: state.settings.webdav_url, modified_at: null, added: [createAccount()], removed: [], removes_current: removesCurrent};
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), ListBackups: vi.fn(async () => [file]), PrepareRestore: vi.fn(async () => preview), CancelRestore, Restore}}});
   render(<App />);
   await act(async () => {});
   await press('设置');
   await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
   await press('恢复备份');
+  await press('选择 MacBook 的备份，未知，backup.json');
   expect(screen.getByText('新增账号')).toBeTruthy();
   expect(!!screen.queryByText('CLI 当前账号将移出列表，刷新账号或重启应用后会重新导入。')).toBe(removesCurrent);
   expect(screen.getByRole('dialog').innerHTML).not.toContain('account@example.test');
@@ -77,6 +79,59 @@ it.each([false, true])('恢复预览隐藏身份并按需提示重新导入，�
   expect(CancelRestore).toHaveBeenCalledTimes(1);
   expect(Restore).not.toHaveBeenCalled();
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('备份列表分批展示，选中后下载，可返回列表选择旧版备份并确认恢复', async () => {
+  const state = createState({settings: {webdav_url: 'https://example.test/backup', webdav_username: '', webdav_password: ''}});
+  const files = Array.from({length: 26}, (_, i) => ({id: `codex-deck/${i}.json`, name: `${i}.json`, hostname: i === 25 ? '' : `设备${i}`, created_at: null, modified_at: null, size: 2048, legacy: i === 25}));
+  const preview = (index: number) => ({id: `preview-${index}`, file: files[index], accounts: 0, webdav_url: state.settings.webdav_url, modified_at: null, added: [], removed: [], removes_current: false});
+  const ListBackups = vi.fn(async () => files);
+  const PrepareRestore = vi.fn().mockRejectedValueOnce(new Error('文件已删除')).mockResolvedValueOnce(preview(0)).mockResolvedValueOnce(preview(25));
+  const CancelRestore = vi.fn(async () => {});
+  const Restore = vi.fn(async () => {});
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), ListBackups, PrepareRestore, CancelRestore, Restore}}});
+  render(<App />);
+  await act(async () => {});
+  await press('设置');
+  await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
+  await press('恢复备份');
+  expect(ListBackups).toHaveBeenCalledTimes(1);
+  expect(PrepareRestore).not.toHaveBeenCalled();
+  expect(Restore).not.toHaveBeenCalled();
+  expect(screen.queryByText('旧版备份 · 25.json')).toBeNull();
+  await press('显示更多');
+  expect(screen.getByText('旧版备份 · 25.json')).toBeTruthy();
+  await press('选择 设备0 的备份，未知，0.json');
+  expect(screen.getByRole('alert').textContent).toBe('文件已删除');
+  expect(screen.getByRole('heading', {name: '选择备份'})).toBeTruthy();
+  expect(Restore).not.toHaveBeenCalled();
+  await press('选择 设备0 的备份，未知，0.json');
+  expect(PrepareRestore).toHaveBeenLastCalledWith(files[0].id);
+  await press('返回列表');
+  expect(CancelRestore).toHaveBeenCalledTimes(1);
+  await press('显示更多');
+  await press('选择 未知设备 的备份，未知，25.json');
+  expect(PrepareRestore).toHaveBeenLastCalledWith(files[25].id);
+  expect(screen.getByText('未知设备 · 未知')).toBeTruthy();
+  expect(Restore).not.toHaveBeenCalled();
+  await press('确认替换');
+  expect(Restore).toHaveBeenCalledExactlyOnceWith('preview-25');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('空备份列表可刷新，刷新失败保留列表并显示错误', async () => {
+  const state = createState({settings: {webdav_url: 'https://example.test/backup', webdav_username: '', webdav_password: ''}});
+  const ListBackups = vi.fn().mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('目录读取失败'));
+  vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), GetAutoStart: vi.fn(async () => false), ListBackups}}});
+  render(<App />);
+  await act(async () => {});
+  await press('设置');
+  await act(async () => {fireEvent.click(screen.getByRole('tab', {name: '备份'}))});
+  await press('恢复备份');
+  expect(screen.getByText('暂无远端备份')).toBeTruthy();
+  await press('刷新列表');
+  expect(screen.getByRole('alert').textContent).toBe('目录读取失败');
+  expect(screen.getByText('暂无远端备份')).toBeTruthy();
 });
 
 it('重置卡消费失败后沿用原请求重试，查询失败时回到卡片详情', async () => {
