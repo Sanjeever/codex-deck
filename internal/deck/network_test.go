@@ -88,7 +88,7 @@ func TestRestoreDiscardsInFlightUsageAndCreditResults(t *testing.T) {
 			if err := uploadBackup(remote); err != nil {
 				t.Fatal(err)
 			}
-			preview, err := s.PrepareRestore()
+			preview, err := prepareRestoreTest(t, s)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestRestoreDuringConsumeDoesNotAttachResultToRestoredAccount(t *testing.T) 
 	if err := uploadBackup(remote); err != nil {
 		t.Fatal(err)
 	}
-	preview, err := s.PrepareRestore()
+	preview, err := prepareRestoreTest(t, s)
 	if err != nil {
 		t.Fatal(err)
 	}

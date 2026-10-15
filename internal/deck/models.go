@@ -80,7 +80,6 @@ type Data struct {
 	Network        *network.Config `json:"network,omitempty"`
 	Window         *WindowState    `json:"window,omitempty"`
 	Preferences    Preferences     `json:"preferences"`
-	Sync           BackupSync      `json:"backup_sync,omitempty"`
 	Version        int             `json:"version"`
 	Settings       Settings        `json:"settings"`
 	Accounts       []Account       `json:"accounts"`
@@ -104,10 +103,9 @@ type AccountView struct {
 }
 
 type BackupStatus struct {
-	Busy     bool       `json:"busy"`
-	Conflict bool       `json:"conflict"`
-	At       *time.Time `json:"at" ts_type:"string | null"`
-	Error    string     `json:"error"`
+	Busy  bool       `json:"busy"`
+	At    *time.Time `json:"at" ts_type:"string | null"`
+	Error string     `json:"error"`
 }
 
 type State struct {
@@ -121,12 +119,6 @@ type State struct {
 	Backup         BackupStatus   `json:"backup"`
 	NextRefreshAt  *time.Time     `json:"next_refresh_at" ts_type:"string | null"`
 	AutoRefreshing bool           `json:"auto_refreshing"`
-}
-
-type BackupSync struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
-	ETag     string `json:"etag"`
 }
 
 type Preferences struct {

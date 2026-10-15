@@ -1,6 +1,7 @@
 package deck
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -52,8 +53,10 @@ type Service struct {
 	backupWake          chan struct{}
 	backupPending       bool
 	backupCancel        context.CancelFunc
-	conflictETag        string
-	restoreMeta         remoteBackup
+	restoreFiles        []BackupFile
+	restoreListSource   Settings
+	restoreFile         BackupFile
+	restoreBody         []byte
 	restoreSource       Settings
 	cancel              context.CancelFunc
 	restore             *Data
@@ -236,6 +239,7 @@ type RestorePreview struct {
 	Added          []PreviewAccount `json:"added"`
 	Removed        []PreviewAccount `json:"removed"`
 	RemovesCurrent bool             `json:"removes_current"`
+	File           BackupFile       `json:"file"`
 }
 
 func accountDifference(left, right []Account) []PreviewAccount {
@@ -255,24 +259,67 @@ func accountDifference(left, right []Account) []PreviewAccount {
 	return result
 }
 
-func (s *Service) PrepareRestore() (RestorePreview, error) {
-	s.CancelAutomatic()
+func (s *Service) ListBackups() ([]BackupFile, error) {
+	s.mu.Lock()
 	settings := s.store.Snapshot().Settings
-	d, meta, err := readBackup(s.ctx, settings)
+	generation := s.generation
+	s.mu.Unlock()
+	files, err := listBackupFiles(s.ctx, settings)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.store.Snapshot().Settings != settings || s.generation != generation {
+		return nil, fmt.Errorf("设置或本地数据已改变，请重新读取备份列表")
+	}
+	s.restoreFiles = files
+	s.restoreListSource = settings
+	return files, nil
+}
+
+func (s *Service) PrepareRestore(filename string) (RestorePreview, error) {
+	s.CancelAutomatic()
+	s.mu.Lock()
+	settings := s.store.Snapshot().Settings
+	generation := s.generation
+	var file BackupFile
+	for _, candidate := range s.restoreFiles {
+		if candidate.ID == filename {
+			file = candidate
+			break
+		}
+	}
+	if file.ID == "" || settings != s.restoreListSource {
+		s.mu.Unlock()
+		return RestorePreview{}, fmt.Errorf("备份列表已失效，请重新选择文件")
+	}
+	s.restore = nil
+	s.restoreID = ""
+	s.restoreBody = nil
+	s.mu.Unlock()
+	d, metadata, body, err := readSnapshot(s.ctx, settings, filename)
 	if err != nil {
 		return RestorePreview{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	local := s.store.Snapshot()
-	if local.Settings != settings {
-		return RestorePreview{}, fmt.Errorf("设置已改变，请重新下载备份")
+	if local.Settings != settings || s.generation != generation {
+		return RestorePreview{}, fmt.Errorf("设置或本地数据已改变，请重新下载备份")
+	}
+	if metadata.Hostname != "" {
+		file.Hostname = metadata.Hostname
+	}
+	if !metadata.CreatedAt.IsZero() {
+		file.CreatedAt = &metadata.CreatedAt
 	}
 	s.restore = &d
-	s.restoreMeta = meta
+	s.restoreFile = file
+	s.restoreBody = body
 	s.restoreSource = settings
 	s.restoreID = uuid.NewString()
-	preview := RestorePreview{ID: s.restoreID, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL, ModifiedAt: meta.ModifiedAt, Added: accountDifference(d.Accounts, local.Accounts), Removed: accountDifference(local.Accounts, d.Accounts)}
+	preview := RestorePreview{ID: s.restoreID, File: file, Accounts: len(d.Accounts), WebDAVURL: d.Settings.WebDAVURL, ModifiedAt: file.ModifiedAt, Added: accountDifference(d.Accounts, local.Accounts), Removed: accountDifference(local.Accounts, d.Accounts)}
 	for _, view := range s.state().Accounts {
 		if !view.Current {
 			continue
@@ -292,6 +339,7 @@ func (s *Service) CancelRestore() {
 	defer s.mu.Unlock()
 	s.restore = nil
 	s.restoreID = ""
+	s.restoreBody = nil
 }
 
 func (s *Service) Restore(id string) error {
@@ -306,14 +354,14 @@ func (s *Service) Restore(id string) error {
 	if s.restore == nil || id != s.restoreID {
 		return fmt.Errorf("恢复预览已失效，请重新下载")
 	}
-	source, tag := s.restoreSource, s.restoreMeta.ETag
+	source, filename, body := s.restoreSource, s.restoreFile.ID, s.restoreBody
 	s.mu.Unlock()
-	meta, exists, err := backupMetadata(s.ctx, source)
+	_, _, latest, err := readSnapshot(s.ctx, source, filename)
 	s.mu.Lock()
 	if err != nil {
 		return err
 	}
-	if !exists || meta.ETag != tag {
+	if !bytes.Equal(latest, body) {
 		return fmt.Errorf("远端备份已改变，请重新下载预览")
 	}
 	if s.restore == nil || id != s.restoreID || s.store.Snapshot().Settings != source {
@@ -324,10 +372,6 @@ func (s *Service) Restore(id string) error {
 		localNetwork := d.Network
 		*d = cloneData(*s.restore)
 		d.Network = localNetwork
-		d.Sync = BackupSync{}
-		if d.Settings.WebDAVURL == source.WebDAVURL && d.Settings.WebDAVUsername == source.WebDAVUsername {
-			d.Sync = BackupSync{URL: source.WebDAVURL, Username: source.WebDAVUsername, ETag: tag}
-		}
 		return nil
 	}); err != nil {
 		return err
@@ -342,11 +386,12 @@ func (s *Service) Restore(id string) error {
 	s.generation++
 	s.restore = nil
 	s.restoreID = ""
+	s.restoreBody = nil
+	s.restoreFiles = nil
 	s.usageErrors = map[string]string{}
 	s.creditErrors = map[string]string{}
 	s.usageTries = map[string]time.Time{}
 	s.backup = BackupStatus{}
-	s.conflictETag = ""
 	s.backupPending = false
 	return nil
 }

@@ -27,7 +27,7 @@ func TestAppStatePreservesJSONContract(t *testing.T) {
 				Settings:       deck.Settings{WebDAVURL: "http://localhost:8080/backup"},
 				CLIStore:       "file",
 				CLIError:       "凭据不可用",
-				Backup:         deck.BackupStatus{Busy: true, Conflict: true, At: &at, Error: "备份失败"},
+				Backup:         deck.BackupStatus{Busy: true, At: &at, Error: "备份失败"},
 				NextRefreshAt:  &at,
 				AutoRefreshing: true,
 			},

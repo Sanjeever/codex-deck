@@ -1,14 +1,10 @@
 package deck
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -85,7 +81,7 @@ func TestRestorePreviewCurrentAccountAndReimport(t *testing.T) {
 			if err := uploadBackup(Data{Version: Version, Settings: settings, Accounts: []Account{remote}}); err != nil {
 				t.Fatal(err)
 			}
-			preview, err := s.PrepareRestore()
+			preview, err := prepareRestoreTest(t, s)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,78 +107,6 @@ func TestRestorePreviewCurrentAccountAndReimport(t *testing.T) {
 				t.Fatal("显式刷新未按实际 CLI 身份重新导入账号")
 			}
 		})
-	}
-}
-
-func TestBackupFirstConnectionAndTwoDeviceConflict(t *testing.T) {
-	settings, root, closeServer := testWebDAV(t)
-	defer closeServer()
-	first := testService(t)
-	a := testAccount(t)
-	addTestAccount(t, first, a)
-	if err := first.SaveSettings(settings); err != nil {
-		t.Fatal(err)
-	}
-	waitBackup(t, first)
-	original, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	second := testService(t)
-	if err := second.SaveSettings(settings); err != nil {
-		t.Fatal(err)
-	}
-	waitBackup(t, second)
-	if !second.GetState().Backup.Conflict {
-		t.Fatal("首次配置覆盖已有备份")
-	}
-	remote, _ := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
-	if string(remote) != string(original) {
-		t.Fatal("已有备份被覆盖")
-	}
-	preview, err := second.PrepareRestore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(preview.Added) != 1 || preview.ModifiedAt == nil {
-		t.Fatal("恢复预览缺少真实更新时间或新增账号")
-	}
-	if err := second.Restore(preview.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := first.Rename(a.ID, "设备一"); err != nil {
-		t.Fatal(err)
-	}
-	waitBackup(t, first)
-	restoredID := second.GetState().Accounts[0].ID
-	if err := second.Rename(restoredID, "设备二"); err != nil {
-		t.Fatal(err)
-	}
-	waitBackup(t, second)
-	if !second.GetState().Backup.Conflict {
-		t.Fatal("其他设备修改未触发冲突")
-	}
-	remoteData, err := downloadBackup(settings)
-	if err != nil || remoteData.Accounts[0].Alias != "设备一" {
-		t.Fatal("冲突写入覆盖其他设备")
-	}
-	if err := second.OverwriteBackup(); err != nil {
-		t.Fatal(err)
-	}
-	remoteData, err = downloadBackup(settings)
-	if err != nil || remoteData.Accounts[0].Alias != "设备二" {
-		t.Fatal("显式覆盖未上传")
-	}
-	// 确认界面打开后另一设备再次写入，条件写仍须阻止覆盖。
-	if err := first.Backup(); !errors.Is(err, ErrBackupConflict) {
-		t.Fatal("设备一未发现覆盖冲突")
-	}
-	if err := second.Rename(restoredID, "设备二再次更新"); err != nil {
-		t.Fatal(err)
-	}
-	waitBackup(t, second)
-	if err := first.OverwriteBackup(); !errors.Is(err, ErrBackupConflict) {
-		t.Fatal("过期覆盖确认仍生效")
 	}
 }
 
@@ -239,76 +163,99 @@ func TestBackupQueueCoalescesAndDoesNotBlockEditing(t *testing.T) {
 	}
 }
 
-func TestConditionalWriteDoesNotAcceptMissingETag(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
-	defer server.Close()
-	_, err := writeBackup(context.Background(), Data{Version: Version, Settings: Settings{WebDAVURL: server.URL}, Accounts: []Account{}}, "W/\"weak\"", false)
-	if err == nil {
-		t.Fatal("弱 ETag 被用于条件写")
+func TestBackupTwoDevicesKeepIndependentSnapshots(t *testing.T) {
+	settings, _, closeServer := testWebDAV(t)
+	defer closeServer()
+	first, second := testService(t), testService(t)
+	a := testAccount(t)
+	addTestAccount(t, first, a)
+	for _, s := range []*Service{first, second} {
+		if err := s.SaveSettings(settings); err != nil {
+			t.Fatal(err)
+		}
+		waitBackup(t, s)
+		if s.GetState().Backup.Error != "" {
+			t.Fatal(s.GetState().Backup.Error)
+		}
+	}
+	files, err := second.ListBackups()
+	if err != nil || len(files) != 2 {
+		t.Fatalf("设备未分别保存快照: %v, %v", files, err)
+	}
+	var firstID string
+	for _, file := range files {
+		d, _, _, err := readSnapshot(first.ctx, settings, file.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(d.Accounts) == 1 {
+			firstID = file.ID
+		}
+	}
+	preview, err := second.PrepareRestore(firstID)
+	if err != nil || len(preview.Added) != 1 || preview.File.Hostname == "" || preview.File.CreatedAt == nil {
+		t.Fatalf("选中文件预览错误: %v, %v", preview, err)
+	}
+	if err := second.Restore(preview.ID); err != nil {
+		t.Fatal(err)
+	}
+	files, err = first.ListBackups()
+	if err != nil || len(files) != 2 {
+		t.Fatal("恢复自动上传")
+	}
+	for i, s := range []*Service{first, second} {
+		if err := s.Rename(a.ID, fmt.Sprintf("设备%d", i+1)); err != nil {
+			t.Fatal(err)
+		}
+		waitBackup(t, s)
+	}
+	files, err = first.ListBackups()
+	if err != nil || len(files) != 4 {
+		t.Fatalf("设备修改覆盖旧快照: %v, %v", files, err)
+	}
+	d, _, _, err := readSnapshot(first.ctx, settings, firstID)
+	if err != nil || d.Accounts[0].Alias != a.Alias {
+		t.Fatal("原快照被修改")
 	}
 }
 
-func TestJianguoyunMetadataAndUnquotedETag(t *testing.T) {
-	body, _ := json.Marshal(Data{Version: Version, Accounts: []Account{}})
-	var puts int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "HEAD" {
-			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-			return
-		}
-		if r.Method == "PUT" {
-			puts++
-			if r.Header.Get("If-Match") != "actual-tag" {
-				t.Error("未使用坚果云原始 ETag")
-			}
-			body, _ = io.ReadAll(r.Body)
-			w.WriteHeader(204)
-			return
-		}
-		w.Header().Set("ETag", "actual-tag")
-		w.Write(body)
-	}))
-	defer server.Close()
-	target, _ := url.Parse(server.URL)
-	original := http.DefaultTransport
-	http.DefaultTransport = davTestTransport{target: target, base: original}
-	defer func() { http.DefaultTransport = original }()
-	settings := Settings{WebDAVURL: "https://dav.jianguoyun.com/dav/"}
-	meta, exists, err := backupMetadata(context.Background(), settings)
-	if err != nil || !exists || meta.ETag != "actual-tag" || meta.ModifiedAt == nil {
-		t.Fatal("坚果云元数据读取错误")
-	}
-	tag, err := writeBackup(context.Background(), Data{Version: Version, Settings: settings, Accounts: []Account{}}, meta.ETag, false)
-	if err != nil || tag != "actual-tag" || puts != 1 {
-		t.Fatalf("坚果云条件上传失败: %v", err)
-	}
-	_, meta, err = readBackup(context.Background(), settings)
-	if err != nil || meta.ModifiedAt == nil {
-		t.Fatal("恢复预览丢失 HEAD 更新时间")
-	}
-}
-
-func TestMissingETagCannotBeConfirmedForOverwrite(t *testing.T) {
+func TestRestoreRejectsUnlistedChangedAndDeletedFiles(t *testing.T) {
+	settings, root, closeServer := testWebDAV(t)
+	defer closeServer()
 	s := testService(t)
-	var writes atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "PUT" {
-			writes.Add(1)
-		}
-		w.WriteHeader(200)
-	}))
-	defer server.Close()
-	if err := s.SaveSettings(Settings{WebDAVURL: server.URL}); err != nil {
+	if err := s.SaveSettings(settings); err != nil {
 		t.Fatal(err)
 	}
 	waitBackup(t, s)
-	if !s.GetState().Backup.Conflict {
-		t.Fatal("已有无版本备份未要求确认")
+	files, err := s.ListBackups()
+	if err != nil || len(files) != 1 {
+		t.Fatal(err)
 	}
-	if err := s.OverwriteBackup(); err == nil {
-		t.Fatal("无 ETag 仍允许盲覆盖")
+	for _, filename := range []string{"../private.json", "https://other-host/file", "unlisted.json"} {
+		if _, err := s.PrepareRestore(filename); err == nil {
+			t.Fatalf("允许恢复未列出的文件: %s", filename)
+		}
 	}
-	if writes.Load() != 0 {
-		t.Fatal("无 ETag 的远端数据被写入")
+	preview, err := s.PrepareRestore(files[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := s.store.Snapshot()
+	remotePath := filepath.Join(root, "backup", filepath.FromSlash(files[0].ID))
+	if err := os.WriteFile(remotePath, []byte(`{"version":1,"accounts":[],"settings":{},"preferences":{"privacy":true}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Restore(preview.ID); err == nil || s.store.Snapshot().Preferences != before.Preferences {
+		t.Fatal("文件改变仍恢复或改写本地数据")
+	}
+	preview, err = s.PrepareRestore(files[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(remotePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Restore(preview.ID); err == nil || s.store.Snapshot().Settings != before.Settings {
+		t.Fatal("文件删除仍恢复或改写本地数据")
 	}
 }

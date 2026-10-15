@@ -302,12 +302,19 @@ func (a *App) Backup() error {
 	}
 	return s.Backup()
 }
-func (a *App) PrepareRestore() (deck.RestorePreview, error) {
+func (a *App) ListBackups() ([]deck.BackupFile, error) {
+	s, err := a.backend()
+	if err != nil {
+		return nil, err
+	}
+	return s.ListBackups()
+}
+func (a *App) PrepareRestore(filename string) (deck.RestorePreview, error) {
 	s, err := a.backend()
 	if err != nil {
 		return deck.RestorePreview{}, err
 	}
-	return s.PrepareRestore()
+	return s.PrepareRestore(filename)
 }
 func (a *App) CancelRestore() error {
 	s, err := a.backend()
@@ -373,14 +380,6 @@ func (a *App) CancelLogin(id string) error {
 	}
 	s.CancelLogin(id)
 	return nil
-}
-
-func (a *App) OverwriteBackup() error {
-	s, err := a.backend()
-	if err != nil {
-		return err
-	}
-	return s.OverwriteBackup()
 }
 
 func (a *App) SavePreferences(p deck.Preferences) error {

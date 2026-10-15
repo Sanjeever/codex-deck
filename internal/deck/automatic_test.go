@@ -120,7 +120,7 @@ func TestAutomaticRefreshPreservesDeletionAndRestore(t *testing.T) {
 	if err := uploadBackup(Data{Version: Version, Settings: settings, Accounts: []Account{}}); err != nil {
 		t.Fatal(err)
 	}
-	preview, err := restarted.PrepareRestore()
+	preview, err := prepareRestoreTest(t, restarted)
 	if err != nil {
 		t.Fatal(err)
 	}

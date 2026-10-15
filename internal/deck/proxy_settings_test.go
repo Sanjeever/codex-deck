@@ -82,9 +82,11 @@ func TestAllServiceRequestsShareProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := Settings{WebDAVURL: "http://service.invalid/backup"}
-	if _, _, err := backupMetadata(s.ctx, settings); err != nil {
+	response, err = backupFileRequest(s.ctx, settings, "codex-deck.json", http.MethodHead, nil, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
+	response.Body.Close()
 	client, _, err := webDAVClient(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +141,7 @@ func TestNetworkExcludedFromBackupAndRetainedOnRestore(t *testing.T) {
 	settings := Settings{WebDAVURL: server.URL}
 	local := s.store.Snapshot()
 	local.Settings = settings
-	if _, err := writeBackup(network.WithRouter(context.Background(), s.HTTP), local, `"backup-version"`, false); err != nil {
+	if _, err := writeSnapshot(network.WithRouter(context.Background(), s.HTTP), local); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(saved), `"network"`) || strings.Contains(string(saved), "remote-secret") {
@@ -148,7 +150,9 @@ func TestNetworkExcludedFromBackupAndRetainedOnRestore(t *testing.T) {
 	if err := s.store.Update(func(d *Data) error { d.Settings = settings; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	preview, err := s.PrepareRestore()
+	s.restoreFiles = []BackupFile{{ID: "codex-deck.json"}}
+	s.restoreListSource = settings
+	preview, err := s.PrepareRestore("codex-deck.json")
 	if err != nil {
 		t.Fatal(err)
 	}

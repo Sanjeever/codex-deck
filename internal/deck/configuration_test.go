@@ -111,7 +111,6 @@ func TestConfigurationProxyOnlyDoesNotWaitForBackupOrQueueUpload(t *testing.T) {
 	s := testService(t)
 	if err := s.store.Update(func(d *Data) error {
 		d.Settings.WebDAVURL = "http://backup.invalid"
-		d.Sync = BackupSync{ETag: "keep-tag"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -134,7 +133,7 @@ func TestConfigurationProxyOnlyDoesNotWaitForBackupOrQueueUpload(t *testing.T) {
 		<-done
 		t.Fatal("仅修改代理却等待正在上传的备份")
 	}
-	if s.store.Snapshot().Sync != d.Sync || s.backupPending {
-		t.Fatal("仅修改代理改变备份版本或触发上传")
+	if s.backupPending {
+		t.Fatal("仅修改代理触发上传")
 	}
 }

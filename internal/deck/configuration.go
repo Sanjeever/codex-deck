@@ -69,9 +69,6 @@ func (s *Service) SaveConfiguration(config Configuration) (Configuration, error)
 		d.Preferences.LowQuotaNotify = config.Preferences.LowQuotaNotify
 		d.Preferences.LowQuotaThreshold = config.Preferences.LowQuotaThreshold
 		d.Preferences.DisableUpdateCheck = config.Preferences.DisableUpdateCheck
-		if backupChanged {
-			d.Sync = BackupSync{}
-		}
 		return nil
 	}); err != nil {
 		return config, err
@@ -81,7 +78,6 @@ func (s *Service) SaveConfiguration(config Configuration) (Configuration, error)
 	}
 	if backupChanged {
 		s.backup = BackupStatus{}
-		s.conflictETag = ""
 	}
 	if backupChanged || preferencesChanged {
 		s.autoBackup()

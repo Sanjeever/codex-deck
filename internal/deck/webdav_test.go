@@ -1,6 +1,7 @@
 package deck
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,22 +51,22 @@ func testWebDAV(t *testing.T) (Settings, string, func()) {
 	return Settings{WebDAVURL: server.URL + "/backup/", WebDAVUsername: "test-user", WebDAVPassword: "test-password"}, root, server.Close
 }
 
-func TestWebDAVUploadReplaceAndDownload(t *testing.T) {
+func TestLegacyWebDAVBackupRecovery(t *testing.T) {
 	settings, root, closeServer := testWebDAV(t)
 	defer closeServer()
 	d := Data{Version: Version, Settings: settings, Accounts: []Account{testAccount(t)}}
 	if err := uploadBackup(d); err != nil {
 		t.Fatal(err)
 	}
-	d.Accounts[0].Alias = "新别名"
-	if err := uploadBackup(d); err != nil {
-		t.Fatal(err)
+	files, err := listBackupFiles(context.Background(), settings)
+	if err != nil || len(files) != 1 || !files[0].Legacy || files[0].Hostname != "" {
+		t.Fatalf("旧版备份来源错误: %v, %v", files, err)
 	}
 	restored, err := downloadBackup(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.Accounts[0].Alias != "新别名" || restored.Accounts[0].Tokens.RefreshToken != d.Accounts[0].Tokens.RefreshToken {
+	if restored.Accounts[0].Alias != d.Accounts[0].Alias || restored.Accounts[0].Tokens.RefreshToken != d.Accounts[0].Tokens.RefreshToken {
 		t.Fatal("备份内容不完整")
 	}
 	entries, err := os.ReadDir(filepath.Join(root, "backup"))
@@ -73,7 +74,7 @@ func TestWebDAVUploadReplaceAndDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 || entries[0].Name() != "codex-deck.json" {
-		t.Fatal("产生历史版本或额外文件")
+		t.Fatal("读取旧版备份修改远端文件")
 	}
 }
 
@@ -90,7 +91,7 @@ func TestWebDAVFailureAndInvalidData(t *testing.T) {
 		t.Fatal("接受无效账号数据")
 	}
 	settings.WebDAVPassword = "wrong"
-	if err := uploadBackup(Data{Version: Version, Settings: settings, Accounts: []Account{}}); err == nil {
+	if _, err := writeSnapshot(context.Background(), Data{Version: Version, Settings: settings, Accounts: []Account{}}); err == nil {
 		t.Fatal("未暴露认证失败")
 	}
 	var malformed Data
@@ -189,17 +190,49 @@ func uploadBackup(d Data) error {
 }
 
 func downloadBackup(settings Settings) (Data, error) {
-	client, path, err := webDAVClient(settings)
+	files, err := listBackupFiles(context.Background(), settings)
 	if err != nil {
 		return Data{}, err
 	}
-	b, err := client.Read(path)
-	if err != nil {
-		return Data{}, fmt.Errorf("WebDAV 下载失败: %w", err)
+	if len(files) == 0 {
+		return Data{}, fmt.Errorf("没有备份")
 	}
-	d, err := parseData(b)
-	if err != nil {
-		return Data{}, fmt.Errorf("远端备份无效: %w", err)
+	file := files[0]
+	for _, candidate := range files {
+		if candidate.Legacy {
+			file = candidate
+		}
 	}
-	return d, nil
+	d, _, _, err := readSnapshot(context.Background(), settings, file.ID)
+	return d, err
+}
+
+func prepareRestoreTest(t *testing.T, s *Service) (RestorePreview, error) {
+	t.Helper()
+	files, err := s.ListBackups()
+	if err != nil {
+		return RestorePreview{}, err
+	}
+	if len(files) == 0 {
+		return RestorePreview{}, fmt.Errorf("没有备份")
+	}
+	file := files[0]
+	for _, candidate := range files {
+		if candidate.Legacy {
+			file = candidate
+		}
+	}
+	return s.PrepareRestore(file.ID)
+}
+
+func latestBackupBytes(settings Settings) ([]byte, error) {
+	files, err := listBackupFiles(context.Background(), settings)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("没有备份")
+	}
+	_, _, body, err := readSnapshot(context.Background(), settings, files[0].ID)
+	return body, err
 }

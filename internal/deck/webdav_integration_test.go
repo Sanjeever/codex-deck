@@ -1,39 +1,40 @@
 package deck
 
 import (
-	"net/http"
+	"context"
 	"os"
 	"testing"
-
-	"github.com/studio-b12/gowebdav"
 )
 
-// 显式提供测试服务凭据时执行；远端已有备份则跳过，避免覆盖真实数据。
+// 显式提供测试服务凭据时执行；使用独立空目录，只清理本次创建的快照。
 func TestWebDAVLiveBackup(t *testing.T) {
 	address := os.Getenv("CODEX_DECK_TEST_WEBDAV_URL")
 	if address == "" {
 		t.Skip("未配置 WebDAV 集成测试服务")
 	}
 	settings := Settings{WebDAVURL: address, WebDAVUsername: os.Getenv("CODEX_DECK_TEST_WEBDAV_USER"), WebDAVPassword: os.Getenv("CODEX_DECK_TEST_WEBDAV_PASSWORD")}
-	client, filename, err := webDAVClient(settings)
+	client, _, err := webDAVClient(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Stat(filename); err == nil {
-		t.Skip("远端已有备份，不覆盖现有数据")
-	} else if !gowebdav.IsErrNotFound(err) && !gowebdav.IsErrCode(err, http.StatusConflict) {
+	files, err := listBackupFiles(context.Background(), settings)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) != 0 {
+		t.Skip("远端已有备份，请提供独立空目录")
+	}
 	d := Data{Version: Version, Settings: settings, Accounts: []Account{}}
-	if err := uploadBackup(d); err != nil {
+	file, err := writeSnapshot(context.Background(), d)
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := client.Remove(filename); err != nil {
+		if err := client.Remove(file.ID); err != nil {
 			t.Error("清理测试备份失败", err)
 		}
 	})
-	got, err := downloadBackup(settings)
+	got, _, _, err := readSnapshot(context.Background(), settings, file.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

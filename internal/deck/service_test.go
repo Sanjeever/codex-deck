@@ -352,7 +352,7 @@ func TestRefreshSyncFailureAndRecovery(t *testing.T) {
 }
 
 func TestCLISyncBacksUpOnlyChangedCredentials(t *testing.T) {
-	settings, root, closeServer := testWebDAV(t)
+	settings, _, closeServer := testWebDAV(t)
 	defer closeServer()
 	s := testService(t)
 	a := testAccount(t)
@@ -367,13 +367,13 @@ func TestCLISyncBacksUpOnlyChangedCredentials(t *testing.T) {
 	defer server.Close()
 	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
 	waitBackup(t, s)
-	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	before, err := latestBackupBytes(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	backupAt := *s.GetState().Backup.At
 	s.RefreshAll()
-	after, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	after, err := latestBackupBytes(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +587,7 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 	s := testService(t)
 	a := testAccount(t)
 	addTestAccount(t, s, a)
-	settings, root, closeServer := testWebDAV(t)
+	settings, _, closeServer := testWebDAV(t)
 	defer closeServer()
 	if err := s.SaveSettings(settings); err != nil {
 		t.Fatal(err)
@@ -615,7 +615,7 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 		t.Fatal("旧备份覆盖新数据")
 	}
 	waitBackup(t, s)
-	before, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	before, err := latestBackupBytes(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestAutoBackupOrderingFailuresAndUsageExclusion(t *testing.T) {
 	defer server.Close()
 	s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
 	s.RefreshAll()
-	after, err := os.ReadFile(filepath.Join(root, "backup", "codex-deck.json"))
+	after, err := latestBackupBytes(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +665,7 @@ func TestRestoreConfirmationAndCLIUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview, err := s.PrepareRestore()
+	preview, err := prepareRestoreTest(t, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,7 +676,7 @@ func TestRestoreConfirmationAndCLIUntouched(t *testing.T) {
 	if err := s.Restore(preview.ID); err == nil {
 		t.Fatal("接受取消预览")
 	}
-	preview, err = s.PrepareRestore()
+	preview, err = prepareRestoreTest(t, s)
 	if err != nil {
 		t.Fatal(err)
 	}
