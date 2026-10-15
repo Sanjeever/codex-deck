@@ -196,11 +196,14 @@ func TestBackupTwoDevicesKeepIndependentSnapshots(t *testing.T) {
 	if err != nil || len(preview.Added) != 1 || preview.File.Hostname == "" || preview.File.CreatedAt == nil {
 		t.Fatalf("选中文件预览错误: %v, %v", preview, err)
 	}
+	if err := first.Backup(); err != nil {
+		t.Fatal(err)
+	}
 	if err := second.Restore(preview.ID); err != nil {
 		t.Fatal(err)
 	}
 	files, err = first.ListBackups()
-	if err != nil || len(files) != 2 {
+	if err != nil || len(files) != 3 {
 		t.Fatal("恢复自动上传")
 	}
 	for i, s := range []*Service{first, second} {
@@ -210,7 +213,7 @@ func TestBackupTwoDevicesKeepIndependentSnapshots(t *testing.T) {
 		waitBackup(t, s)
 	}
 	files, err = first.ListBackups()
-	if err != nil || len(files) != 4 {
+	if err != nil || len(files) != 5 {
 		t.Fatalf("设备修改覆盖旧快照: %v, %v", files, err)
 	}
 	d, _, _, err := readSnapshot(first.ctx, settings, firstID)

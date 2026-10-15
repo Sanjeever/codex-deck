@@ -30,8 +30,9 @@ type BackupFile struct {
 }
 
 type BackupMetadata struct {
-	CreatedAt time.Time `json:"created_at"`
-	Hostname  string    `json:"hostname"`
+	CreatedAt  time.Time  `json:"created_at"`
+	Hostname   string     `json:"hostname"`
+	ModifiedAt *time.Time `json:"-"`
 }
 
 type backupSnapshot struct {
@@ -184,6 +185,9 @@ func readSnapshot(ctx context.Context, settings Settings, filename string) (Data
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return Data{}, BackupMetadata{}, nil, fmt.Errorf("备份来源信息无效: %w", err)
+	}
+	if at, err := http.ParseTime(response.Header.Get("Last-Modified")); err == nil {
+		envelope.Metadata.ModifiedAt = &at
 	}
 	return d, envelope.Metadata, body, nil
 }

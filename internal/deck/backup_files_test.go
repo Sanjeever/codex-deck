@@ -125,3 +125,16 @@ func TestSnapshotUploadWithoutETagAndReadFailures(t *testing.T) {
 		t.Fatal("接受无效备份")
 	}
 }
+
+func TestSnapshotReadUsesDownloadedFileMetadata(t *testing.T) {
+	at := time.Date(2026, 10, 15, 8, 30, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Last-Modified", at.Format(http.TimeFormat))
+		w.Write([]byte(`{"version":1,"accounts":[],"backup_metadata":{"hostname":"原始设备/名称","created_at":"2026-10-15T08:00:00Z"}}`))
+	}))
+	defer server.Close()
+	_, metadata, _, err := readSnapshot(context.Background(), Settings{WebDAVURL: server.URL}, "codex-deck/file.json")
+	if err != nil || metadata.Hostname != "原始设备/名称" || metadata.CreatedAt.IsZero() || metadata.ModifiedAt == nil || !metadata.ModifiedAt.Equal(at) {
+		t.Fatalf("下载未保留真实来源或更新时间: %v, %v", metadata, err)
+	}
+}

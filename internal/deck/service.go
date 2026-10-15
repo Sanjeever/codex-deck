@@ -314,6 +314,9 @@ func (s *Service) PrepareRestore(filename string) (RestorePreview, error) {
 	if !metadata.CreatedAt.IsZero() {
 		file.CreatedAt = &metadata.CreatedAt
 	}
+	if metadata.ModifiedAt != nil {
+		file.ModifiedAt = metadata.ModifiedAt
+	}
 	s.restore = &d
 	s.restoreFile = file
 	s.restoreBody = body
