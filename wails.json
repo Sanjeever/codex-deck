@@ -10,6 +10,6 @@
     "darwin/*": "sh ../../scripts/darwin-icon.sh ${bin}"
   },
   "info": {
-    "productVersion": "1.3.5"
+    "productVersion": "1.3.6"
   }
 }
