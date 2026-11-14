@@ -65,7 +65,7 @@ func (a *App) ExportAuth(id string) (bool, error) {
 	}
 	if cliTarget {
 		choice, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-			Type: runtime.WarningDialog, Title: "覆盖 CLI 凭据", Message: "覆盖 CLI 的 auth.json？这会改变 CLI 当前账号。重新启动 Codex CLI 后生效。",
+			Type: runtime.WarningDialog, Title: "覆盖 CLI 凭据", Message: "覆盖 CLI 的 auth.json？这会改变 CLI 当前账号。重新启动 Codex CLI 后生效；共享后台服务在运行时还需执行 codex app-server daemon restart。",
 			Buttons: []string{"取消", "确认覆盖"}, DefaultButton: "取消", CancelButton: "取消",
 		})
 		if err != nil || choice != "确认覆盖" {
