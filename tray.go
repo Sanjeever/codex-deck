@@ -132,8 +132,12 @@ func (a *App) switchFromTray(id string) {
 			confirm = true
 			return "请在窗口中确认文件凭据存储", nil
 		}
-		if err := s.Switch(id, false); err != nil {
+		result, err := s.Switch(id, false)
+		if err != nil {
 			return "", err
+		}
+		if result.CLIDaemonRunning {
+			return "账号已切换 · 请执行 codex app-server daemon restart", nil
 		}
 		return "账号已切换 · 请重启 Codex CLI", nil
 	})

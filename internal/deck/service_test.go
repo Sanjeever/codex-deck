@@ -434,10 +434,10 @@ func TestCLISyncUnsupportedStoreAllowsConfirmedSwitch(t *testing.T) {
 	if state := restarted.GetState(); state.CLIError == "" || state.CLIStore != "keyring" {
 		t.Fatal("不支持的存储方式未显示同步错误")
 	}
-	if err := restarted.Switch(a.ID, false); err == nil {
+	if _, err := restarted.Switch(a.ID, false); err == nil {
 		t.Fatal("未确认便修改凭据存储")
 	}
-	if err := restarted.Switch(a.ID, true); err != nil {
+	if _, err := restarted.Switch(a.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if state := restarted.GetState(); state.CLIError != "" || state.CLIStore != "file" || !state.Accounts[0].Current {
@@ -468,7 +468,7 @@ func TestAccountLoginDedupIdentityAndDelete(t *testing.T) {
 	if err = s.acceptLogin(id, a.Tokens, other); err == nil {
 		t.Fatal("重登接受不同身份")
 	}
-	if err = s.Switch(id, false); err != nil {
+	if _, err = s.Switch(id, false); err != nil {
 		t.Fatal(err)
 	}
 	if !s.GetState().Accounts[0].Current {
@@ -646,7 +646,7 @@ func TestRestoreConfirmationAndCLIUntouched(t *testing.T) {
 	s := testService(t)
 	a := testAccount(t)
 	addTestAccount(t, s, a)
-	if err := s.Switch(a.ID, false); err != nil {
+	if _, err := s.Switch(a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	settings, _, closeServer := testWebDAV(t)
@@ -874,7 +874,7 @@ func TestDeleteChecksLatestCLIIdentity(t *testing.T) {
 	b.Tokens.AccessToken = b.Tokens.IDToken
 	addTestAccount(t, s, a)
 	addTestAccount(t, s, b)
-	if err := s.Switch(a.ID, false); err != nil {
+	if _, err := s.Switch(a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.cli.Write(b.Tokens); err != nil {

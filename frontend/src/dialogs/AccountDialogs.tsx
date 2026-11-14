@@ -40,7 +40,7 @@ export function AccountDialogs({dialog, ...props}: DialogProps & {dialog: Extrac
     }
     case 'switch':
       return <DialogFrame title="切换账号" busy={busy} onClose={onClose} actions={
-        <Button isDisabled={!!busy} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), () => {setDialog(null); notify('info', '账号已切换', '重新启动 Codex CLI 后生效')})}>确认切换</Button>
+        <Button isDisabled={!!busy} onPress={() => void run('正在切换', () => backend().Switch(dialog.account.id, true), result => {setDialog(null); notify('info', '账号已切换', result.cli_daemon_running ? '请执行 codex app-server daemon restart 后生效' : '重新启动 Codex CLI 后生效')})}>确认切换</Button>
       }>
         <p>CLI 当前使用 {state.cli_store || '未知'} 存储。改为文件存储并切换至 {accountName(dialog.account, state.preferences.privacy)}？</p>
       </DialogFrame>;

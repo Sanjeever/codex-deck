@@ -108,6 +108,10 @@ type BackupStatus struct {
 	Error string     `json:"error"`
 }
 
+type SwitchResult struct {
+	CLIDaemonRunning bool `json:"cli_daemon_running"`
+}
+
 type State struct {
 	Network        network.Config `json:"network"`
 	DesktopError   string         `json:"desktop_error"`

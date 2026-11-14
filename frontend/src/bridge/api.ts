@@ -14,6 +14,7 @@ export interface Credit {id: string; reset_type: string; status: string; granted
 export interface Credits {available_count: number; credits: Credit[] | null; queried_at: string}
 export interface Account {id: string; account_id: string; email: string; alias: string; plan: string; current: boolean; auth_error: string; usage: Usage | null; credits: Credits | null; usage_error: string; credits_error: string; pending_reset: ResetRequest | null}
 export interface State {network: NetworkConfig; build_info: BuildInfo; update: UpdateState; desktop_error: string; preferences: Preferences; accounts: Account[]; settings: Settings; cli_store: string; cli_error: string; backup: {at: string | null; error: string; busy: boolean}; next_refresh_at: string | null; auto_refreshing: boolean; tray_busy?: string}
+export interface SwitchResult {cli_daemon_running: boolean}
 export interface BackupFile {id: string; name: string; hostname: string; created_at: string | null; modified_at: string | null; size: number; legacy: boolean}
 export interface RestorePreview {id: string; file: BackupFile; accounts: number; webdav_url: string; modified_at: string | null; added: PreviewAccount[]; removed: PreviewAccount[]; removes_current: boolean}
 export interface PreviewAccount {email: string; alias: string; account_id: string}
@@ -49,7 +50,7 @@ interface Backend {
   RefreshCredits(id: string): Promise<void>;
   Rename(id: string, alias: string): Promise<void>;
   Delete(id: string): Promise<void>;
-  Switch(id: string, enableFile: boolean): Promise<void>;
+  Switch(id: string, enableFile: boolean): Promise<SwitchResult>;
   BeginLogin(target: string): Promise<{id: string}>;
   WaitLogin(id: string): Promise<void>;
   CancelLogin(id: string): Promise<void>;

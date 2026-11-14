@@ -281,10 +281,10 @@ func (a *App) Delete(id string) error {
 	}
 	return s.Delete(id)
 }
-func (a *App) Switch(id string, enableFile bool) error {
+func (a *App) Switch(id string, enableFile bool) (deck.SwitchResult, error) {
 	s, err := a.backend()
 	if err != nil {
-		return err
+		return deck.SwitchResult{}, err
 	}
 	return s.Switch(id, enableFile)
 }

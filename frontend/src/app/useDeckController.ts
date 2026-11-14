@@ -90,7 +90,7 @@ export function useDeckController() {
   const showCredits = (account: Account) => {setDialog({kind: 'credits', account}); void run('正在查询重置卡', () => backend().RefreshCredits(account.id))};
   const switchAccount = (account: Account) => {
     if (state?.cli_store !== 'file') {setDialog({kind: 'switch', account}); return}
-    void run('正在切换', () => backend().Switch(account.id, false), () => notify('info', '账号已切换', '重新启动 Codex CLI 后生效'));
+    void run('正在切换', () => backend().Switch(account.id, false), result => notify('info', '账号已切换', result.cli_daemon_running ? '请执行 codex app-server daemon restart 后生效' : '重新启动 Codex CLI 后生效'));
   };
 
   const menu = (key: string, account: Account) => {

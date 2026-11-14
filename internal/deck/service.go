@@ -764,39 +764,39 @@ func (s *Service) RefreshCredits(id string) error {
 	return s.refreshCredits(id)
 }
 
-func (s *Service) Switch(id string, enableFile bool) error {
+func (s *Service) Switch(id string, enableFile bool) (SwitchResult, error) {
 	s.CancelAutomatic()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := findAccount(s.store.Snapshot(), id); err != nil {
-		return err
+		return SwitchResult{}, err
 	}
 	mode, err := s.cli.StoreMode()
 	if err != nil {
-		return err
+		return SwitchResult{}, err
 	}
 	if mode != "file" {
 		if !enableFile {
-			return fmt.Errorf("请确认将 CLI 凭据存储改为文件存储")
+			return SwitchResult{}, fmt.Errorf("请确认将 CLI 凭据存储改为文件存储")
 		}
 		if err = s.cli.EnableFileStore(); err != nil {
-			return err
+			return SwitchResult{}, err
 		}
 	}
 	a, err := s.prepareAccount(id, false)
 	if err != nil {
-		return err
+		return SwitchResult{}, err
 	}
 	if err = s.cli.Write(a.Tokens); err != nil {
-		return fmt.Errorf("写入 CLI 认证失败: %w", err)
+		return SwitchResult{}, fmt.Errorf("写入 CLI 认证失败: %w", err)
 	}
 	if err = s.store.Update(func(d *Data) error { d.LastSwitchedID = id; return nil }); err != nil {
-		return fmt.Errorf("CLI 已切换，本地记录保存失败: %w", err)
+		return SwitchResult{}, fmt.Errorf("CLI 已切换，本地记录保存失败: %w", err)
 	}
 	s.importError = ""
 	s.cliIdentity = Identity{UserID: a.UserID, AccountID: a.AccountID, Email: a.Email, Plan: a.Plan}
 	s.autoBackup()
-	return nil
+	return SwitchResult{CLIDaemonRunning: s.cli.DaemonRunning()}, nil
 }
 
 func (s *Service) PrepareConsume(id, creditID string) (ResetRequest, error) {

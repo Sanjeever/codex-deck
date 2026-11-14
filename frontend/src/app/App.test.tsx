@@ -26,7 +26,7 @@ it('托盘切换请求打开文件存储确认，确认后才修改 CLI', async 
   const account = createAccount({id: 'target', email: 'target@example.test'});
   const state = createState({accounts: [account], cli_store: 'keyring'});
   let request!: (id: string) => void;
-  const switchAccount = vi.fn(async () => {});
+  const switchAccount = vi.fn(async () => ({cli_daemon_running: false}));
   vi.stubGlobal('go', {main: {App: {SetAutomaticPaused: vi.fn(async () => {}), GetState: vi.fn(async () => state), Switch: switchAccount}}});
   vi.stubGlobal('runtime', {EventsOnMultiple: (event: string, callback: (id: string) => void) => {if (event === 'deck:tray-switch') request = callback; return () => {}}});
   try {

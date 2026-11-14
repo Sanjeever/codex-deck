@@ -165,7 +165,7 @@ func TestDeleteCurrentAccountAfterDeckSwitch(t *testing.T) {
 	s := testService(t)
 	a := testAccount(t)
 	addTestAccount(t, s, a)
-	if err := s.Switch(a.ID, false); err != nil {
+	if _, err := s.Switch(a.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Delete(a.ID); err == nil {

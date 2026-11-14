@@ -44,7 +44,7 @@ func TestRestorePreviewCurrentAccountAndReimport(t *testing.T) {
 			s.backend = Backend{Client: server.Client(), BaseURL: server.URL}
 			current := testAccount(t)
 			addTestAccount(t, s, current)
-			if err := s.Switch(current.ID, false); err != nil {
+			if _, err := s.Switch(current.ID, false); err != nil {
 				t.Fatal(err)
 			}
 			remote := current
