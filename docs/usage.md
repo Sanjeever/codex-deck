@@ -46,6 +46,10 @@ Deck 设置、CLI 文件与系统自启动分别保存，部分失败明确显�
 
 “复制恢复命令”使用 `session_meta.id` 中有效的 Codex UUID，复制 `codex resume <SESSION_ID>`，未记录有效 ID 时停用。命令由用户在终端执行，终端的 `CODEX_HOME` 应与会话来源一致；工作目录选择由 Codex CLI 处理，见[官方恢复命令](https://learn.chatgpt.com/docs/developer-commands?surface=cli#codex-resume)。
 
+额度用满后，可在会话详情点击“换号继续”，根据缓存额度选择其他账号并切换。当前账号与需重新登录的账号不可选；非文件凭据模式会明确确认改为文件存储。会话 ID 或工作目录缺失、文件已删除时，不执行账号切换。切换后点击“复制续接命令”，在页面标明的终端执行。命令包含会话 ID、原工作目录与 Deck 当前读取的 `CODEX_HOME`；检测到 CLI 共享后台服务时，先重启服务，成功后再恢复。macOS/Linux 使用 Bash 或 Zsh；Windows 使用 PowerShell，并将该终端的 `CODEX_HOME` 设为会话来源。复制失败可重试，已切换的账号保持生效。
+
+Codex CLI 的恢复列表可能按创建账号筛选，`codex resume --all` 仍可能隐藏其他账号的会话。Deck 会话列表不做账号筛选，续接命令按 ID 查询目标会话。Codex CLI 0.169.0 的实际跨账号恢复校验受 `cli_resume_account_check` 控制，启用时会拒绝创建者不匹配的恢复；后续版本以官方实现为准，Deck 不保证跨版本可用，也不改写会话归属。见[官方列表筛选](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/thread-store/src/local_history_account.rs)与[恢复校验](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_resume_account.rs)。
+
 点击“查找”展开会话内搜索。查找覆盖整个文件的可读记录，可通过上下匹配按钮跳到尚未加载的事件或长输出中的匹配片段；计数带 `+` 表示还有后续匹配页。“轮次”菜单也可跳到尚未加载的记录。长文本通过“上一段内容 / 下一段内容”分段查看。窄视口通过“会话列表”返回。
 
 请求、回复与展开的工具参数和输出均可复制。长内容提供“复制当前片段”和“复制完整内容”，完整复制从消息起点分段读取，只在全部读取成功后写入剪贴板；文件发生变化时报告错误。隐私模式下，复制隐藏已知账号身份，与界面展示一致。
@@ -56,7 +60,7 @@ Deck 设置、CLI 文件与系统自启动分别保存，部分失败明确显�
 
 目录不存在、空目录、无搜索结果和读取失败有不同状态，错误可显式重试，筛选不会因失败清空。部分文件失败仍展示可读会话，同时在“读取提示”中列出文件与位置。末尾尚未写完的记录保留此前内容并提示刷新；已结束的坏行报告损坏。单条记录超过读取上限时明确提示该行未参与展示或检索，边界以 [`internal/sessions/reader.go`](../internal/sessions/reader.go) 为准。
 
-会话功能只读，不编辑、删除、恢复、继续或重放记录，不读取 `history.jsonl` 作为执行轨迹，不启动 Codex。会话与检索缓存不保存到 Deck 配置，也不参与 WebDAV 备份。隐私模式隐藏已知账号身份，不能自动脱敏任意源码或秘密；正文和高亮均作为普通文本展示。
+会话文件保持只读，Deck 不编辑、删除或重放记录，不读取 `history.jsonl` 作为执行轨迹，不启动 Codex。恢复与续接命令由用户在终端执行。会话与检索缓存不保存到 Deck 配置，也不参与 WebDAV 备份。隐私模式隐藏已知账号身份，不能自动脱敏任意源码或秘密；正文和高亮均作为普通文本展示。
 
 ## 添加、同步与切换账号
 

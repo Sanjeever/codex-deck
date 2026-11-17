@@ -22,6 +22,7 @@ export interface AuthImportPreview extends PreviewAccount {id: string; existing:
 export interface ResetRequest {id: string; credit_id: string; started: boolean; result: ConsumeResult | null}
 export interface ConsumeResult {code: string; windows_reset: number; refresh_error: string}
 interface Backend {
+  PrepareSessionResume(id: string): Promise<SessionResumePlan>;
   ListSessions(query: SessionListQuery): Promise<SessionListPage>;
   CancelSessionRequest(scope: 'list' | 'detail' | 'find', requestID: number): Promise<void>;
   ReadSession(query: SessionReadQuery): Promise<SessionReadPage>;
@@ -71,6 +72,7 @@ export function backend(): Backend {
 }
 
 export interface SessionIssue {file: string; line?: number; message: string}
+export interface SessionResumePlan {command: string; restart_command: string; shell: string}
 export interface SessionSummary {id: string; resume_command?: string; title: string; project: string; created_at?: string; updated_at?: string; models: string[]; turn_count: number; tool_count: number; snippet?: string; match_event_id?: string; match_text_offset?: number}
 export interface SessionEvent {id: string; turn: number; kind: string; time?: string; name?: string; status?: string; text: string; text_cursor: number}
 export interface SessionTurn {number: number; event_id: string}

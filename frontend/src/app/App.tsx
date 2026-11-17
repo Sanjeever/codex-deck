@@ -62,7 +62,7 @@ export default function App() {
       onSort={sort => savePreferences({...state.preferences, sort})}
       onAction={menu} onAdd={() => void login()}
     /></div>}
-    {(workspace === 'sessions' || sessions.list !== null) && <SessionBrowser browser={sessions} active={workspace === 'sessions'} safeText={safeText} keyboardEnabled={!busy && !dialog} />}
+    {(workspace === 'sessions' || sessions.list !== null) && <SessionBrowser browser={sessions} active={workspace === 'sessions'} safeText={safeText} keyboardEnabled={!busy && !dialog} onResume={state ? session => setDialog({kind: 'resume', session}) : undefined} />}
     {state && <DialogHost
       state={state} dialog={dialog} busy={busy} run={run}
       onClose={close} setDialog={setDialog} useCredit={useCredit}

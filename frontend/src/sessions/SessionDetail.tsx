@@ -1,13 +1,13 @@
 import {useEffect, useRef, useState} from 'react';
 import {Button, Dropdown, Input, Spinner, TextField} from '@heroui/react';
-import {backend, type SessionMatchPage} from '../bridge/api';
+import {backend, type SessionMatchPage, type SessionSummary} from '../bridge/api';
 import {groupBy, localDate, localTime, projectLabel, ReadIssues} from './SessionText';
 import {TimelineEvents} from './TimelineEvents';
 import {copyToClipboard} from '../bridge/clipboard';
 import {readConversation} from './conversation';
 import {errorText, nextSessionRequest, type SessionBrowserController} from './useSessionBrowser';
 
-export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string; keyboardEnabled: boolean}) {
+export function SessionDetail({browser: b, active, safeText, keyboardEnabled, onResume}: {browser: SessionBrowserController; active: boolean; safeText: (text: string) => string; keyboardEnabled: boolean; onResume?: (session: SessionSummary) => void}) {
   const [findQuery, setFindQuery] = useState('');
   const [showFind, setShowFind] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -90,6 +90,7 @@ export function SessionDetail({browser: b, active, safeText, keyboardEnabled}: {
       <div className="session-detail-toolbar">
         <div className="session-event-filters" aria-label="事件筛选">{[{id: 'chat', label: '对话'}, {id: 'all', label: '全部记录'}, {id: 'error', label: '异常'}].map(item => <Button key={item.id} variant="ghost" size="sm" aria-pressed={b.filter === item.id} className={b.filter === item.id ? 'is-active' : ''} onPress={() => b.setFilter(item.id)}>{item.label}</Button>)}</div>
         <div className="session-detail-actions">
+          {onResume && <Button size="sm" variant="secondary" isDisabled={!session.resume_command || !session.project || !keyboardEnabled} onPress={() => onResume(session)}>换号继续</Button>}
           <Dropdown>
             <Dropdown.Trigger aria-label="会话操作" className="row-menu" isDisabled={copying}>···</Dropdown.Trigger>
             <Dropdown.Popover><Dropdown.Menu aria-label="会话操作" onAction={key => {if (key === 'copy') void copy(); else void copyToClipboard(session.resume_command!, '恢复命令')}}>

@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 import {Modal} from '@heroui/react';
-import type {Account, AuthImportPreview, BackupFile, ResetRequest, RestorePreview, State} from '../bridge/api';
+import type {Account, AuthImportPreview, BackupFile, ResetRequest, RestorePreview, SessionSummary, State} from '../bridge/api';
 import {privateText} from '../accounts/accounts';
 import type {RunOperation} from '../app/useDeckController';
 import {AccountDialogs} from './AccountDialogs';
@@ -9,8 +9,10 @@ import {CreditDialogs} from './CreditDialogs';
 import {SettingsDialog} from './SettingsDialog';
 import type {SettingsTab} from './useSettingsDraft';
 import {UpdateDialog} from './UpdateDialog';
+import {ResumeSessionDialog} from './ResumeSessionDialog';
 
 export type Dialog =
+  | {kind: 'resume'; session: SessionSummary}
   | {kind: 'settings'; tab?: SettingsTab}
   | {kind: 'update'}
   | {kind: 'backups'; files: BackupFile[]}
@@ -40,6 +42,7 @@ interface DialogHostProps extends DialogProps {
 export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
   let content: ReactNode = null;
   switch (dialog?.kind) {
+    case 'resume': content = <ResumeSessionDialog {...props} session={dialog.session} />; break;
     case 'settings':
       return <SettingsDialog {...props} initialTab={dialog.tab} safeText={value => privateText(value, props.state.preferences.privacy, props.state.accounts)} onBackups={files => props.setDialog({kind: 'backups', files})} onUpdate={() => props.setDialog({kind: 'update'})} />;
     case 'update': content = <UpdateDialog {...props} />; break;
@@ -55,6 +58,6 @@ export function DialogHost({dialog, useCredit, ...props}: DialogHostProps) {
   }
   const installing = dialog?.kind === 'update' && !!props.state.update.phase;
   return <Modal.Backdrop isOpen={!!dialog} onOpenChange={open => {if (!open) void props.onClose()}} isDismissable={!props.busy && !installing} isKeyboardDismissDisabled={installing || (!!props.busy && dialog?.kind !== 'login')}>
-    <Modal.Container size={dialog?.kind === 'credits' || dialog?.kind === 'backups' ? 'lg' : 'sm'} placement="center">{content}</Modal.Container>
+    <Modal.Container size={dialog?.kind === 'resume' ? 'md' : dialog?.kind === 'credits' || dialog?.kind === 'backups' ? 'lg' : 'sm'} placement="center">{content}</Modal.Container>
   </Modal.Backdrop>;
 }

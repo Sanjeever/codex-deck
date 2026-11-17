@@ -50,3 +50,11 @@ func (a *App) ReadSessionText(query sessions.TextQuery) (sessions.TextPage, erro
 	}
 	return s.ReadText(query)
 }
+
+func (a *App) PrepareSessionResume(id string) (sessions.ResumePlan, error) {
+	s, err := a.sessionReader()
+	if err != nil {
+		return sessions.ResumePlan{}, err
+	}
+	return s.PrepareResume(id)
+}

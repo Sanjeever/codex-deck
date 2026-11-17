@@ -15,7 +15,7 @@ func TestSessionBindingsIndependentOfAccounts(t *testing.T) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	data := []byte("{\"timestamp\":\"2026-10-13T08:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"synthetic\",\"cwd\":\"/test\"}}\n{\"timestamp\":\"2026-10-13T08:01:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"测试请求\"}}\n")
+	data := []byte("{\"timestamp\":\"2026-10-13T08:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"9fb19d9b-42a9-4346-a9d0-27c242de94df\",\"cwd\":\"/test\",\"source\":\"vscode\",\"account_scoped\":true,\"creator_user_id\":\"other-user\",\"creator_account_id\":\"other-workspace\"}}\n{\"timestamp\":\"2026-10-13T08:01:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"测试请求\"}}\n")
 	path := filepath.Join(root, "rollout-test.jsonl")
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
@@ -29,6 +29,10 @@ func TestSessionBindingsIndependentOfAccounts(t *testing.T) {
 		t.Fatalf("list: %+v %v", list, err)
 	}
 	id := list.Sessions[0].ID
+	plan, err := a.PrepareSessionResume(id)
+	if err != nil || plan.Command == "" || plan.RestartCommand == "" {
+		t.Fatalf("resume: %+v %v", plan, err)
+	}
 	page, err := a.ReadSession(sessions.ReadQuery{ID: id})
 	if err != nil || len(page.Events) != 1 {
 		t.Fatalf("read: %+v %v", page, err)
